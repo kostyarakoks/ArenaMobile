@@ -10,10 +10,26 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-15's default Xcode is newer than macos-14's, which matters here: XcodeGen always
+    # writes the .xcodeproj in the format of whatever Xcode is current when the XcodeGen release
+    # you get from Homebrew was built. If that format is newer than the Xcode actually used to
+    # build, xcodebuild refuses to even open the project ("future Xcode project file format").
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode actually installed on this runner
+        # Belt-and-suspenders on top of picking macos-15 above: GitHub's runner images ship
+        # several Xcode versions side by side, and xcode-select's default can lag behind the
+        # newest one — which is exactly how this broke the first time (XcodeGen's project
+        # format was newer than the default-selected Xcode 15.4). Always pinning to the newest
+        # available one keeps this working even if GitHub changes the default again later.
+        run: |
+          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -n1)
+          echo "Selecting $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE"
+          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
