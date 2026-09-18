@@ -38,7 +38,16 @@ jobs:
         run: xcodegen generate
 
       - name: Build unsigned .app for a real device
+        # `set -o pipefail` is the important bit: piping through `tee` alone would otherwise
+        # make this step's exit code always be tee's (0), silently turning a real build
+        # failure into a "green" step. With pipefail, the step still fails exactly when
+        # xcodebuild does — `tee` only *additionally* saves everything to build.log so the
+        # very last lines (the ones that scroll past / get swallowed in the Actions UI when
+        # clang's diagnostic output isn't flushed the way plain console output is) are never
+        # lost: the "Show the actual error on failure" step below prints them explicitly, and
+        # the full file is also uploaded as its own artifact regardless.
         run: |
+          set -o pipefail
           xcodebuild \
             -project ArenaMobile.xcodeproj \
             -scheme ArenaMobile \
@@ -50,7 +59,23 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM="" \
-            build
+            build 2>&1 | tee build.log
+
+      - name: Show the actual error on failure
+        if: failure()
+        run: |
+          echo "===== last 150 lines of build.log ====="
+          tail -n 150 build.log
+          echo "===== lines mentioning error/failed/undefined/ld: ====="
+          grep -n -i -E "error:|failed|undefined symbol|ld: |clang: error|linker command failed" build.log || echo "(no matching lines found — see the full build.log artifact uploaded below)"
+
+      - name: Upload full build log (always, even on success)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArenaMobile-build-log
+          path: build.log
+          retention-days: 14
 
       - name: Package into an (unsigned) .ipa
         run: |
