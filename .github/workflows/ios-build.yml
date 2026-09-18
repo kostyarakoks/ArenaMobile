@@ -1,0 +1,50 @@
+name: Build unsigned iOS IPA
+
+# Builds the app with NO Apple Developer account and NO code signing at all — the whole point
+# is to produce a .ipa that Sideloadly (running on your Windows PC) can sign locally with your
+# free Apple ID and push straight to your iPhone over USB. See README.md for the full flow.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project from project.yml
+        run: xcodegen generate
+
+      - name: Build unsigned .app for a real device
+        run: |
+          xcodebuild \
+            -project ArenaMobile.xcodeproj \
+            -scheme ArenaMobile \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package into an (unsigned) .ipa
+        run: |
+          mkdir -p Payload
+          cp -R "build/Build/Products/Release-iphoneos/ArenaMobile.app" Payload/
+          zip -r ArenaMobile-unsigned.ipa Payload
+
+      - name: Upload .ipa as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArenaMobile-unsigned-ipa
+          path: ArenaMobile-unsigned.ipa
+          retention-days: 14
