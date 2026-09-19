@@ -21,13 +21,33 @@ enum VillageLayout {
     ]
 
     /// Mirrors villageMap.js's buildingsBackground(tribe, wallLevel) — same asset paths,
-    /// resolved against whatever server the player logged into (see VillageMapView).
+    /// resolved against whatever server the player logged into (see VillageMapView). Used as a
+    /// key into backgroundAssetName(forPath:) below, and — for a village with an admin-uploaded
+    /// custom map template — as the literal network path VillageMapView falls back to fetching.
     static func backgroundPath(tribe: String?, wallLevel: Int) -> String {
         guard wallLevel > 0 else { return "/game-assets/img/g/bg0.jpg" }
         switch tribe {
         case "roman": return "/game-assets/img/g/bg11.jpg"
         case "teuton": return "/game-assets/img/g/bg12.jpg"
         default: return "/game-assets/img/g/bg1.jpg"
+        }
+    }
+
+    /// Maps one of the 4 classic background paths above to the name of its imageset, bundled
+    /// straight into the app by build_ios_assets.py (Assets.xcassets/GameAssets/Backgrounds) —
+    /// this is the fix for "не грузилось долго с сервера": VillageMapView renders Image(name)
+    /// instantly from the app bundle for these instead of AsyncImage-fetching a jpg from the
+    /// server on every single map view. Only these 4 well-known assets are bundled, so a village
+    /// with an admin-uploaded custom map template (an arbitrary, per-village image the app can't
+    /// know about ahead of time) correctly falls through to nil, and VillageMapView keeps using
+    /// AsyncImage for that one case.
+    static func backgroundAssetName(forPath path: String) -> String? {
+        switch path {
+        case "/game-assets/img/g/bg0.jpg": return "bg0"
+        case "/game-assets/img/g/bg1.jpg": return "bg1"
+        case "/game-assets/img/g/bg11.jpg": return "bg11"
+        case "/game-assets/img/g/bg12.jpg": return "bg12"
+        default: return nil
         }
     }
 }

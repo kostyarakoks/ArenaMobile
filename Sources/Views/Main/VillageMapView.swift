@@ -148,34 +148,72 @@ struct VillageMapView: View {
         .padding(.horizontal)
     }
 
+    // Local asset (bundled by build_ios_assets.py) when this is one of the 4 classic
+    // backgrounds — instant, no network round-trip — falling back to AsyncImage only for an
+    // admin-uploaded custom map template, which is arbitrary per-village server content the app
+    // can't bundle ahead of time. See VillageLayout.backgroundAssetName for the mapping.
+    @ViewBuilder
     private func backgroundImage(path: String) -> some View {
-        let url = URL(string: path, relativeTo: APIClient.shared.baseURL)?.absoluteURL
-        return AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: .fill)
-            default:
-                Color(red: 19 / 255, green: 42 / 255, blue: 77 / 255)
+        if let assetName = VillageLayout.backgroundAssetName(forPath: path) {
+            Image(assetName)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            let url = URL(string: path, relativeTo: APIClient.shared.baseURL)?.absoluteURL
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    Color(red: 19 / 255, green: 42 / 255, blue: 77 / 255)
+                }
             }
         }
     }
 
+    // Real building art (bundled locally — Assets.xcassets/GameAssets/Buildings, same
+    // g<gid>.gif files Buildings.vue draws on the web, converted to PNG by
+    // build_ios_assets.py) instead of the old plain colored-circle placeholder. The main
+    // building (slot 8) renders larger, matching Buildings.vue's own bigger-slot-8 treatment.
     private func plotMarker(slot: Int, building: VillageDetail.BuildingSlot?) -> some View {
-        let level = building?.buildingKey != nil ? building?.level : nil
+        let isBuilt = building?.buildingKey != nil
         let isDamaged = (building?.hp ?? 100) < 100
+        let iconSize: CGFloat = slot == 8 ? 46 : 32
 
         return Button {
             tappedBuilding = building ?? VillageDetail.BuildingSlot(slot: slot, buildingKey: nil, level: 0, label: "Пустой участок", gid: nil, hp: 100)
         } label: {
             ZStack {
-                Circle()
-                    .fill(level != nil ? Color(red: 1, green: 0.84, blue: 0.47) : Color.black.opacity(0.35))
-                    .frame(width: 26, height: 26)
-                    .overlay(Circle().stroke(isDamaged ? Color.red : Color.white.opacity(0.8), lineWidth: isDamaged ? 2 : 1))
-                if let level {
+                if isBuilt, let gid = building?.gid {
+                    Image("g\(gid)")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: iconSize, height: iconSize)
+                } else {
+                    Circle()
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 26, height: 26)
+                        .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 1))
+                    Text("+")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+
+                if isBuilt, let level = building?.level {
                     Text("\(level)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.black)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.65))
+                        .clipShape(Capsule())
+                        .offset(y: iconSize / 2 + 4)
+                }
+
+                if isDamaged {
+                    Text("⚠️")
+                        .font(.system(size: 12))
+                        .offset(x: iconSize / 2 - 2, y: -(iconSize / 2 - 2))
                 }
             }
             .shadow(color: .black.opacity(0.5), radius: 2)
