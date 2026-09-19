@@ -72,7 +72,7 @@ struct MessagesView: View {
                                 }
                                 Spacer()
                                 if box == "inbox" && message.readAt == nil {
-                                    Circle().fill(Color.blue).frame(width: 8, height: 8)
+                                    Circle().fill(GameTheme.amber).frame(width: 8, height: 8)
                                 }
                             }
                         }
@@ -130,15 +130,16 @@ private struct MessageDetailSheet: View {
                 } else if let detail {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(detail.subject).font(.title3.bold())
+                            Text(detail.subject).font(.title3.bold()).foregroundStyle(GameTheme.amber)
                             Text(detail.isMine ? "Кому: \(detail.recipient)" : "От: \(detail.sender)")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(GameTheme.textSecondary)
                             Divider()
-                            Text(detail.body)
+                            Text(detail.body).foregroundStyle(GameTheme.textPrimary)
                         }
                         .padding()
                     }
+                    .gameScreenBackground()
                 } else {
                     Text("Не удалось загрузить сообщение.").foregroundStyle(.secondary)
                 }

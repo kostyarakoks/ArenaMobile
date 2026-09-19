@@ -37,24 +37,25 @@ struct ShopView: View {
             List {
                 Section {
                     HStack {
-                        Text("💎 Кристаллы").font(.headline)
+                        Text("💎 Кристаллы").font(.headline).foregroundStyle(GameTheme.textPrimary)
                         Spacer()
-                        Text("\(detail.crystals)").font(.headline.monospacedDigit())
+                        Text("\(detail.crystals)").font(.headline.monospacedDigit()).foregroundStyle(GameTheme.amber)
                     }
                     if detail.plusActive {
                         Label("Plus активен", systemImage: "star.fill").foregroundStyle(.yellow).font(.footnote)
                     } else if let until = detail.plusTempUntil {
-                        Text("Plus (временно) до \(until)").font(.footnote).foregroundStyle(.secondary)
+                        Text("Plus (временно) до \(until)").font(.footnote).foregroundStyle(GameTheme.textSecondary)
                     }
                 }
 
                 Section("Купить кристаллы") {
                     ForEach(detail.packages) { package in
                         HStack {
-                            Text("💎 \(package.crystals)")
+                            Text("💎 \(package.crystals)").foregroundStyle(GameTheme.textPrimary)
                             Spacer()
                             Button(package.priceLabel) { Task { await buy(packageID: package.id) } }
-                                .font(.caption)
+                                .buttonStyle(.gamePrimary)
+                                .fixedSize()
                         }
                     }
                 }
@@ -62,20 +63,23 @@ struct ShopView: View {
                 if !detail.plusActive {
                     Section("Plus-аккаунт") {
                         Button("Разблокировать Plus (\(detail.plusQueueCost) 💎)") { Task { await unlockPlus() } }
+                            .buttonStyle(.gamePrimary)
                         Button("Plus на \(detail.plusQueueTempDays) дн. (\(detail.plusQueueTempCost) 💎)") { Task { await unlockPlusTemp() } }
+                            .buttonStyle(.gamePrimary)
                     }
                 }
 
                 Section("Товары") {
                     ForEach(detail.items) { item in
                         HStack {
-                            Text("\(item.icon ?? "🎁") \(item.label)").font(.footnote)
+                            Text("\(item.icon ?? "🎁") \(item.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
                             Spacer()
                             if let remaining = item.stockRemaining {
-                                Text("осталось \(remaining)").font(.caption2).foregroundStyle(.secondary)
+                                Text("осталось \(remaining)").font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             }
                             Button("\(item.costCrystals) 💎") { Task { await purchase(id: item.id) } }
-                                .font(.caption)
+                                .buttonStyle(.gamePrimary)
+                                .fixedSize()
                                 .disabled(!item.inStock)
                         }
                     }

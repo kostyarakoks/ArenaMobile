@@ -108,12 +108,13 @@ struct MainTabView: View {
                                 Text(item.icon).font(.system(size: 26))
                                 Text(item.label)
                                     .font(.system(size: 11))
+                                    .foregroundStyle(GameTheme.textSecondary)
                                     .multilineTextAlignment(.center)
                                     .lineLimit(2)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(item == selected ? Color.accentColor.opacity(0.15) : Color.gray.opacity(0.12))
+                            .background(item == selected ? GameTheme.amber.opacity(0.18) : GameTheme.panelTop.opacity(0.5))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
@@ -121,6 +122,7 @@ struct MainTabView: View {
                 }
                 .padding(16)
             }
+            .gameScreenBackground()
             .navigationTitle("Ещё")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

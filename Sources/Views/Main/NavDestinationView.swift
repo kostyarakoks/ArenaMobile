@@ -58,14 +58,15 @@ private struct PlaceholderScreen: View {
     var body: some View {
         VStack(spacing: 16) {
             Text(item.icon).font(.system(size: 56))
-            Text(item.label).font(.title2.bold())
+            Text(item.label).font(.title2.bold()).foregroundStyle(GameTheme.amber)
             Text("Экран «\(item.label)» ещё не подключён к данным игры — здесь появится то же самое, что вы видите на этой вкладке в веб-версии.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(GameTheme.textMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .gameScreenBackground()
         .navigationTitle(item.label)
     }
 }

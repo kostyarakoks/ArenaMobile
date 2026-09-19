@@ -41,21 +41,21 @@ struct TechTreeView: View {
                             ForEach(nodes) { node in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack {
-                                        Text(node.label).font(.footnote.bold())
+                                        Text(node.label).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
                                         Spacer()
                                         if node.isBuilt {
                                             Text("построено (\(node.currentLevel)/\(node.maxLevel))")
-                                                .font(.caption2).foregroundStyle(.green)
+                                                .font(.caption2).foregroundStyle(GameTheme.good)
                                         } else if node.isAvailable {
-                                            Text("доступно").font(.caption2).foregroundStyle(.blue)
+                                            Text("доступно").font(.caption2).foregroundStyle(GameTheme.amber)
                                         } else {
-                                            Text("заблокировано").font(.caption2).foregroundStyle(.secondary)
+                                            Text("заблокировано").font(.caption2).foregroundStyle(GameTheme.textMuted)
                                         }
                                     }
                                     if !node.requires.isEmpty {
                                         Text("Требует: " + node.requires.map { "\($0.label) ур.\($0.level)" }.joined(separator: ", "))
                                             .font(.caption2)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(GameTheme.textSecondary)
                                     }
                                 }
                                 .padding(.vertical, 2)

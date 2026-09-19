@@ -58,13 +58,18 @@ struct RallyPointView: View {
             List {
                 Section {
                     Button { showSend = true } label: { Label("Отправить войска", systemImage: "arrow.up.right.circle") }
+                        .buttonStyle(.gamePrimary)
                 }
                 Section("Войска в деревне") {
                     if detail.troops.isEmpty {
-                        Text("Нет войск.").foregroundStyle(.secondary)
+                        Text("Нет войск.").foregroundStyle(GameTheme.textMuted)
                     }
                     ForEach(detail.troops) { t in
-                        HStack { Text(t.label); Spacer(); Text("\(t.count)").monospacedDigit() }
+                        HStack {
+                            Text(t.label).foregroundStyle(GameTheme.textPrimary)
+                            Spacer()
+                            Text("\(t.count)").monospacedDigit().foregroundStyle(GameTheme.textSecondary)
+                        }
                     }
                 }
                 if !detail.outgoing.isEmpty {
@@ -86,9 +91,9 @@ struct RallyPointView: View {
 
     private func movementRow(_ m: RallyPointDetail.Movement) -> some View {
         HStack {
-            Text(movementLabel(m.type, isReturn: m.isReturn)).font(.footnote)
+            Text(movementLabel(m.type, isReturn: m.isReturn)).font(.footnote).foregroundStyle(GameTheme.amber)
             Spacer()
-            Text("(\(m.targetX)|\(m.targetY))").font(.caption).foregroundStyle(.secondary)
+            Text("(\(m.targetX)|\(m.targetY))").font(.caption).foregroundStyle(GameTheme.textSecondary)
         }
     }
 
@@ -244,9 +249,9 @@ private struct TrainingSheet: View {
                             Section("Очередь") {
                                 ForEach(detail.queue) { q in
                                     HStack {
-                                        Text(q.label)
+                                        Text(q.label).foregroundStyle(GameTheme.textPrimary)
                                         Spacer()
-                                        Text("\(q.trained)/\(q.count)").font(.caption).foregroundStyle(.secondary)
+                                        Text("\(q.trained)/\(q.count)").font(.caption).foregroundStyle(GameTheme.textSecondary)
                                     }
                                 }
                             }
@@ -298,16 +303,17 @@ private struct TrainUnitRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(unit.label).font(.footnote.bold())
+            Text(unit.label).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
             Text("⚔️\(unit.attack) 🛡️\(unit.defInf)/\(unit.defCav) · макс. \(unit.maxAffordable)")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption2).foregroundStyle(GameTheme.textSecondary)
             if unit.locked {
                 Text("Недоступно").font(.caption2).foregroundStyle(.orange)
             } else {
                 HStack {
                     Stepper("Кол-во: \(count)", value: $count, in: 1...max(1, unit.maxAffordable))
                     Button("Обучить") { onTrain(count) }
-                        .font(.caption)
+                        .buttonStyle(.gamePrimary)
+                        .fixedSize()
                         .disabled(isBusy || unit.maxAffordable < 1)
                 }
             }

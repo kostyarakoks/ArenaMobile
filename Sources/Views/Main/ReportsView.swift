@@ -44,14 +44,14 @@ struct ReportsView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(typeLabel(report)).font(.footnote.bold())
-                                    .foregroundStyle(report.iAmAttacker == report.attackerWon ? .green : .red)
+                                    .foregroundStyle(report.iAmAttacker == report.attackerWon ? GameTheme.good : GameTheme.bad)
                                 Text("\(report.attacker ?? "?") → \(report.defender ?? "?")")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
                             if !report.isRead {
-                                Circle().fill(Color.blue).frame(width: 8, height: 8)
+                                Circle().fill(GameTheme.amber).frame(width: 8, height: 8)
                             }
                         }
                     }
@@ -108,15 +108,18 @@ private struct ReportDetailSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(detail.attackerWon ? "Победа атакующего" : "Победа обороняющегося")
                                 .font(.headline)
+                                .foregroundStyle(detail.attackerWon ? GameTheme.good : GameTheme.bad)
                             Text("\(detail.attacker ?? "?") (\(detail.attackerVillage ?? "?")) → \(detail.defender ?? "?") (\(detail.defenderVillage ?? "?"))")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(GameTheme.textSecondary)
                             Divider()
                             Text(detail.resultJSON)
                                 .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(GameTheme.textSecondary)
                         }
                         .padding()
                     }
+                    .gameScreenBackground()
                 } else {
                     Text("Не удалось загрузить отчёт.").foregroundStyle(.secondary)
                 }

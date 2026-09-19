@@ -48,19 +48,19 @@ struct QuestsView: View {
                     ForEach(tab == 0 ? status.chain : status.tail) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(item.title.isEmpty ? item.key : item.title).font(.footnote.bold())
+                                Text(item.title.isEmpty ? item.key : item.title).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
                                 Spacer()
                                 Text(stateLabel(item.state)).font(.caption2).foregroundStyle(stateColor(item.state))
                             }
                             if !item.description.isEmpty {
-                                Text(item.description).font(.caption2).foregroundStyle(.secondary)
+                                Text(item.description).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             }
-                            Text(rewardLabel(item)).font(.caption2).foregroundStyle(.secondary)
+                            Text(rewardLabel(item)).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             if item.state == "ready" {
                                 Button(tab == 0 ? "Забрать" : "Забрать награду") {
                                     Task { await claim(tail: tab == 1) }
                                 }
-                                .font(.caption)
+                                .buttonStyle(.gamePrimary)
                                 .disabled(isBusy)
                             }
                         }
@@ -87,10 +87,10 @@ struct QuestsView: View {
 
     private func stateColor(_ state: String) -> Color {
         switch state {
-        case "done": return .green
-        case "ready": return .yellow
+        case "done": return GameTheme.good
+        case "ready": return GameTheme.amber
         case "cooldown": return .orange
-        default: return .secondary
+        default: return GameTheme.textMuted
         }
     }
 

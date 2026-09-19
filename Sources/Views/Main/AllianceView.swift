@@ -57,12 +57,12 @@ struct AllianceView: View {
     private func myAllianceList(_ alliance: AllianceDetail) -> some View {
         List {
             Section {
-                Text("[\(alliance.tag)] \(alliance.name)").font(.title3.bold())
+                Text("[\(alliance.tag)] \(alliance.name)").font(.title3.bold()).foregroundStyle(GameTheme.amber)
                 if let description = alliance.description, !description.isEmpty {
-                    Text(description).font(.footnote).foregroundStyle(.secondary)
+                    Text(description).font(.footnote).foregroundStyle(GameTheme.textSecondary)
                 }
                 if let leader = alliance.leader {
-                    Text("Лидер: \(leader)").font(.caption).foregroundStyle(.secondary)
+                    Text("Лидер: \(leader)").font(.caption).foregroundStyle(GameTheme.textSecondary)
                 }
             }
             Section("Участники (\(alliance.members.count))") {
@@ -70,10 +70,10 @@ struct AllianceView: View {
                     HStack {
                         Text(member.name)
                         if let role = member.role, !role.isEmpty {
-                            Text(role).font(.caption2).foregroundStyle(.secondary)
+                            Text(role).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                         }
                         Spacer()
-                        Text("\(member.villagesCount) 🏘️").font(.caption).foregroundStyle(.secondary)
+                        Text("\(member.villagesCount) 🏘️").font(.caption).foregroundStyle(GameTheme.textSecondary)
                     }
                 }
             }
@@ -91,17 +91,18 @@ struct AllianceView: View {
     private var browseList: some View {
         List {
             if alliances.isEmpty {
-                Text("Альянсов пока нет — создайте первый.").foregroundStyle(.secondary)
+                Text("Альянсов пока нет — создайте первый.").foregroundStyle(GameTheme.textMuted)
             }
             ForEach(alliances) { alliance in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("[\(alliance.tag)] \(alliance.name)").font(.subheadline.bold())
-                        Text("\(alliance.membersCount) участников").font(.caption).foregroundStyle(.secondary)
+                        Text("[\(alliance.tag)] \(alliance.name)").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                        Text("\(alliance.membersCount) участников").font(.caption).foregroundStyle(GameTheme.textSecondary)
                     }
                     Spacer()
                     Button("Вступить") { Task { await join(id: alliance.id) } }
-                        .font(.caption)
+                        .buttonStyle(.gamePrimary)
+                        .fixedSize()
                         .disabled(isBusy)
                 }
             }

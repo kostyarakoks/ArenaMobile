@@ -37,33 +37,31 @@ struct ArenaView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     HStack {
-                        Text("🏆 Очки арены").font(.headline)
+                        Text("🏆 Очки арены").font(.headline).foregroundStyle(GameTheme.amber)
                         Spacer()
-                        Text("\(detail.arenaPoints)").font(.headline.monospacedDigit())
+                        Text("\(detail.arenaPoints)").font(.headline.monospacedDigit()).foregroundStyle(GameTheme.textPrimary)
                     }
 
                     HStack(spacing: 16) {
                         VStack {
-                            Text("Ваш отряд").font(.caption).foregroundStyle(.secondary)
-                            Text("\(detail.myPower)").font(.title.bold())
+                            Text("Ваш отряд").font(.caption).foregroundStyle(GameTheme.textSecondary)
+                            Text("\(detail.myPower)").font(.title.bold()).foregroundStyle(GameTheme.textPrimary)
                         }
-                        Text("VS").font(.title3.bold()).foregroundStyle(.secondary)
+                        Text("VS").font(.title3.bold()).foregroundStyle(GameTheme.textSecondary)
                         VStack {
-                            Text(detail.opponent.label).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                            Text("\(detail.opponent.power)").font(.title.bold())
+                            Text(detail.opponent.label).font(.caption).foregroundStyle(GameTheme.textSecondary).multilineTextAlignment(.center)
+                            Text("\(detail.opponent.power)").font(.title.bold()).foregroundStyle(GameTheme.textPrimary)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.gray.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .gamePanel()
 
                     Button {
                         Task { await fight() }
                     } label: {
-                        Text("В бой!").font(.headline).frame(maxWidth: .infinity).padding()
+                        Text("В бой!")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.gamePrimary)
                     .disabled(isBusy || detail.myPower <= 0)
 
                     if detail.myPower <= 0 {
@@ -75,21 +73,21 @@ struct ArenaView: View {
                     if let lastResult {
                         VStack(spacing: 6) {
                             Text(lastResult.won ? "Победа! 🎉" : "Поражение").font(.headline)
-                                .foregroundStyle(lastResult.won ? .green : .red)
+                                .foregroundStyle(lastResult.won ? GameTheme.good : GameTheme.bad)
                             Text("\(lastResult.myPower) vs \(lastResult.opponentPower) — \(lastResult.opponentLabel)")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote).foregroundStyle(GameTheme.textSecondary)
                             Text("\(lastResult.pointsDelta >= 0 ? "+" : "")\(lastResult.pointsDelta) очков")
                                 .font(.footnote.bold())
+                                .foregroundStyle(GameTheme.textPrimary)
                         }
-                        .padding()
                         .frame(maxWidth: .infinity)
-                        .background(Color.gray.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .gamePanel()
                     }
                 }
                 .padding(16)
             }
             .disabled(isBusy)
+            .gameScreenBackground()
         } else {
             Color.clear
         }

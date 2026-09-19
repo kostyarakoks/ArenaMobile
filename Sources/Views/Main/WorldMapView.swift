@@ -45,6 +45,7 @@ struct WorldMapView: View {
             }
             .padding(.vertical, 12)
         }
+        .gameScreenBackground()
         .navigationTitle("Карта")
         .task {
             guard mapData == nil else { return }
@@ -77,12 +78,12 @@ struct WorldMapView: View {
     private var goToBar: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
-                Text("X").font(.caption).foregroundStyle(.secondary)
+                Text("X").font(.caption).foregroundStyle(GameTheme.textSecondary)
                 TextField("0", text: $goToXText)
                     .keyboardType(.numbersAndPunctuation)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 60)
-                Text("Y").font(.caption).foregroundStyle(.secondary)
+                Text("Y").font(.caption).foregroundStyle(GameTheme.textSecondary)
                 TextField("0", text: $goToYText)
                     .keyboardType(.numbersAndPunctuation)
                     .textFieldStyle(.roundedBorder)
@@ -90,18 +91,18 @@ struct WorldMapView: View {
                 Button("Перейти") {
                     Task { await load(x: Int(goToXText) ?? 0, y: Int(goToYText) ?? 0) }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.gamePrimary)
+                .fixedSize()
                 Button("Центр") {
                     Task { await load(x: 0, y: 0) }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.gameSecondary)
+                .fixedSize()
             }
             if let mapData {
                 Text("Радиус обзора вокруг ваших деревень: \(mapData.visionRadius)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(GameTheme.textMuted)
             }
         }
         .padding(.horizontal)
@@ -146,7 +147,7 @@ struct WorldMapView: View {
                 Spacer()
                 Text("(\(mapData.center.x)|\(mapData.center.y))")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(GameTheme.textSecondary)
                 Spacer()
                 panButton("chevron.right") { await load(x: mapData.center.x + mapData.gridSize, y: mapData.center.y) }
             }
@@ -222,7 +223,7 @@ struct WorldMapView: View {
             legendItem(color: Color(red: 0.06, green: 0.09, blue: 0.15), label: "Туман")
         }
         .font(.caption2)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(GameTheme.textMuted)
     }
 
     private func legendItem(color: Color, label: String) -> some View {
@@ -234,23 +235,24 @@ struct WorldMapView: View {
 
     private func myVillagesList(_ villages: [VillageSummary]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Мои деревни").font(.caption.bold())
+            Text("Мои деревни").font(.caption.bold()).foregroundStyle(GameTheme.amber)
             ForEach(villages) { v in
                 Button {
                     Task { await load(x: v.x, y: v.y) }
                 } label: {
                     HStack {
-                        Text(v.name + (v.isCapital ? " ★" : ""))
+                        Text(v.name + (v.isCapital ? " ★" : "")).foregroundStyle(GameTheme.textPrimary)
                         Spacer()
-                        Text("(\(v.x)|\(v.y))").foregroundStyle(.secondary)
+                        Text("(\(v.x)|\(v.y))").foregroundStyle(GameTheme.textSecondary)
                     }
                     .font(.caption)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .gamePanel()
+        .padding(.horizontal)
     }
 
     // MARK: - Selected-tile details
@@ -259,19 +261,19 @@ struct WorldMapView: View {
     private func detailsPanel(_ tile: WorldMapTile) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if tile.foggy {
-                Text("Туман войны").font(.subheadline.bold())
+                Text("Туман войны").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
                 if let mapData {
                     Text("Этот участок вне поля зрения ваших деревень (радиус обзора — \(mapData.visionRadius)). Постройте или отвоюйте деревню ближе, чтобы его открыть.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(GameTheme.textSecondary)
                 }
             } else if let village = tile.village {
-                Text(village.name).font(.subheadline.bold())
-                Text("(\(village.x)|\(village.y)) · \(village.owner)").font(.caption).foregroundStyle(.secondary)
+                Text(village.name).font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                Text("(\(village.x)|\(village.y)) · \(village.owner)").font(.caption).foregroundStyle(GameTheme.textSecondary)
                 if let allianceTag = village.allianceTag {
-                    Text("[\(allianceTag)]").font(.caption2).foregroundStyle(.secondary)
+                    Text("[\(allianceTag)]").font(.caption2).foregroundStyle(GameTheme.textMuted)
                 }
-                Text("Население: \(village.population)").font(.caption)
+                Text("Население: \(village.population)").font(.caption).foregroundStyle(GameTheme.textPrimary)
 
                 if previewLoading {
                     ProgressView().frame(maxWidth: .infinity)
@@ -281,18 +283,16 @@ struct WorldMapView: View {
                     Button("Посмотреть постройки") {
                         Task { await loadPreview(id: village.id) }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.gameSecondary)
+                    .fixedSize()
                 }
             } else {
-                Text("Свободный участок").font(.subheadline)
-                Text("(\(tile.x)|\(tile.y))").font(.caption).foregroundStyle(.secondary)
+                Text("Свободный участок").font(.subheadline).foregroundStyle(GameTheme.textPrimary)
+                Text("(\(tile.x)|\(tile.y))").font(.caption).foregroundStyle(GameTheme.textSecondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .gamePanel()
         .padding(.horizontal)
     }
 
@@ -300,12 +300,12 @@ struct WorldMapView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Застроено \(preview.builtPlots) из \(preview.totalPlots) участков")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(GameTheme.textMuted)
 
             if preview.buildings.isEmpty {
                 Text("На этом участке ещё ничего не построено.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(GameTheme.textSecondary)
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
                     ForEach(preview.buildings) { b in
@@ -319,7 +319,7 @@ struct WorldMapView: View {
                             }
                             .frame(width: 28, height: 28)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
-                            Text("\(b.level)").font(.system(size: 9)).foregroundStyle(.secondary)
+                            Text("\(b.level)").font(.system(size: 9)).foregroundStyle(GameTheme.textMuted)
                         }
                     }
                 }

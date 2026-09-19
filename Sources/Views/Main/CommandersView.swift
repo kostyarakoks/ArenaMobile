@@ -45,9 +45,10 @@ struct CommandersView: View {
                     } label: {
                         Label("Нанять за \(collection.recruitCost) 💎", systemImage: "person.badge.plus")
                     }
+                    .buttonStyle(.gamePrimary)
                     .disabled(isBusy)
                     if let lastRecruitMessage {
-                        Text(lastRecruitMessage).font(.footnote).foregroundStyle(.green)
+                        Text(lastRecruitMessage).font(.footnote).foregroundStyle(GameTheme.good)
                     }
                 }
 
@@ -59,7 +60,8 @@ struct CommandersView: View {
                                 Spacer()
                                 Text("Ур. \(commander.level)").font(.caption).foregroundStyle(.secondary)
                                 Button("Убрать") { Task { await removeFromSquad(commander) } }
-                                    .font(.caption)
+                                    .buttonStyle(.gameSecondary)
+                                    .fixedSize()
                             }
                         } else {
                             Text("Пустой слот \(slot)").font(.footnote).foregroundStyle(.secondary)
@@ -82,7 +84,8 @@ struct CommandersView: View {
                             Spacer()
                             if commander.slot == nil {
                                 Button("В отряд") { Task { await addToSquad(commander) } }
-                                    .font(.caption)
+                                    .buttonStyle(.gamePrimary)
+                                    .fixedSize()
                                     .disabled(isBusy || squadFilledCount(collection) >= collection.maxSquadSize)
                             }
                         }

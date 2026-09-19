@@ -55,6 +55,7 @@ struct HeroView: View {
                 .padding(16)
             }
             .disabled(isBusy)
+            .gameScreenBackground()
         } else {
             Color.clear
         }
@@ -62,54 +63,52 @@ struct HeroView: View {
 
     private func statsSection(_ hero: HeroDetail.Info) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(hero.name).font(.title2.bold())
+            Text(hero.name).font(.title2.bold()).foregroundStyle(GameTheme.amber)
             if hero.isOnAdventure {
                 Label("Герой в экспедиции", systemImage: "figure.walk").font(.footnote).foregroundStyle(.orange)
             }
             if let village = hero.village {
-                Text("Находится в деревне: \(village)").font(.footnote).foregroundStyle(.secondary)
+                Text("Находится в деревне: \(village)").font(.footnote).foregroundStyle(GameTheme.textSecondary)
             }
             HStack {
-                Text("Уровень \(hero.level)").font(.subheadline.bold())
+                Text("Уровень \(hero.level)").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
                 Spacer()
-                Text("\(hero.experience)/\(hero.experienceForNext) опыта").font(.footnote).foregroundStyle(.secondary)
+                Text("\(hero.experience)/\(hero.experienceForNext) опыта").font(.footnote).foregroundStyle(GameTheme.textSecondary)
             }
             ProgressView(value: hero.experienceForNext > 0 ? Double(hero.experience) / Double(hero.experienceForNext) : 0)
                 .tint(.yellow)
             HStack {
-                Text("Здоровье").font(.footnote)
+                Text("Здоровье").font(.footnote).foregroundStyle(GameTheme.textSecondary)
                 Spacer()
-                Text("\(hero.health)%").font(.footnote.bold())
+                Text("\(hero.health)%").font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
             }
             ProgressView(value: Double(hero.health) / 100)
                 .tint(.green)
         }
-        .padding(14)
-        .background(Color.gray.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .gamePanel(padding: 14)
     }
 
     private func pointsSection(_ hero: HeroDetail.Info) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Свободные очки: \(hero.unspentPoints)").font(.subheadline.bold())
+            Text("Свободные очки: \(hero.unspentPoints)").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
             ForEach(Self.attributes, id: \.key) { attr in
                 let current = value(for: attr.key, in: hero)
                 HStack {
-                    Text(attr.label).font(.footnote)
+                    Text(attr.label).font(.footnote).foregroundStyle(GameTheme.textPrimary)
                     Spacer()
-                    Text("\(current)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    Text("\(current)").font(.footnote.monospacedDigit()).foregroundStyle(GameTheme.textSecondary)
                     Button {
                         Task { await allocate(attribute: attr.key) }
                     } label: {
                         Image(systemName: "plus.circle.fill")
                     }
+                    .buttonStyle(.gamePrimary)
+                    .fixedSize()
                     .disabled(hero.unspentPoints < 1 || isBusy)
                 }
             }
         }
-        .padding(14)
-        .background(Color.gray.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .gamePanel(padding: 14)
     }
 
     private func value(for attribute: String, in hero: HeroDetail.Info) -> Int {
@@ -124,33 +123,32 @@ struct HeroView: View {
 
     private func equipmentSection(_ equipment: HeroDetail.Equipment) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Снаряжение").font(.subheadline.bold())
+            Text("Снаряжение").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
             Text("Бонус от очков и предметов: +\(equipment.bonusPercent.attack)% атака, +\(equipment.bonusPercent.defense)% защита")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(GameTheme.textSecondary)
 
             slotRow(label: "Оружие", equipped: equipment.equipped.weapon, owned: equipment.owned.weapon, slot: "weapon")
             slotRow(label: "Броня", equipped: equipment.equipped.armor, owned: equipment.owned.armor, slot: "armor")
             slotRow(label: "Амулет", equipped: equipment.equipped.trinket, owned: equipment.owned.trinket, slot: "trinket")
         }
-        .padding(14)
-        .background(Color.gray.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .gamePanel(padding: 14)
     }
 
     private func slotRow(label: String, equipped: HeroDetail.Item?, owned: [HeroDetail.Item], slot: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.footnote.bold())
+            Text(label).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
             if let equipped {
                 HStack {
-                    Text("\(equipped.icon) \(equipped.label)").font(.footnote)
+                    Text("\(equipped.icon) \(equipped.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
                     Spacer()
                     Button("Снять") { Task { await unequip(slot: slot) } }
-                        .font(.caption)
+                        .buttonStyle(.gameSecondary)
+                        .fixedSize()
                         .disabled(isBusy)
                 }
             } else {
-                Text("Пусто").font(.footnote).foregroundStyle(.secondary)
+                Text("Пусто").font(.footnote).foregroundStyle(GameTheme.textMuted)
             }
             if !owned.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -161,10 +159,10 @@ struct HeroView: View {
                             } label: {
                                 VStack(spacing: 2) {
                                     Text(item.icon).font(.title3)
-                                    Text("x\(item.quantity)").font(.caption2)
+                                    Text("x\(item.quantity)").font(.caption2).foregroundStyle(GameTheme.textSecondary)
                                 }
                                 .padding(6)
-                                .background(Color.blue.opacity(0.1))
+                                .background(GameTheme.panelBorder)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .disabled(isBusy)
@@ -177,21 +175,20 @@ struct HeroView: View {
 
     private func craftSection(_ craftable: [HeroDetail.CraftableItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Скрафтить").font(.subheadline.bold())
+            Text("Скрафтить").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
             ForEach(craftable) { item in
                 HStack {
-                    Text("\(item.icon) \(item.label)").font(.footnote)
+                    Text("\(item.icon) \(item.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
                     Spacer()
-                    Text(costLabel(item.cost)).font(.caption2).foregroundStyle(.secondary)
+                    Text(costLabel(item.cost)).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                     Button("Создать") { Task { await craft(itemKey: item.key) } }
-                        .font(.caption)
+                        .buttonStyle(.gamePrimary)
+                        .fixedSize()
                         .disabled(isBusy || villages.isEmpty)
                 }
             }
         }
-        .padding(14)
-        .background(Color.gray.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .gamePanel(padding: 14)
     }
 
     private func costLabel(_ cost: [String: Int]) -> String {

@@ -118,6 +118,36 @@ final class APIClient {
         return decoded
     }
 
+    /// GET /api/villages/{village}/slots/{slot} — "what can I build/upgrade here" catalogue,
+    /// same data VillageMapView's build-picker/upgrade sheet renders (mirrors
+    /// UpgradeModal.vue/EmptyPlotOverlay.vue's fetch on the web).
+    func fetchVillageSlot(villageID: Int, slot: Int, token: String) async throws -> SlotDetail {
+        var request = try makeRequest(path: "/api/villages/\(villageID)/slots/\(slot)", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(SlotDetail.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded
+    }
+
+    private struct SlotActionBody: Encodable { let building_key: String; let instant: Bool }
+
+    /// POST /api/villages/{village}/slots/{slot} — build (empty plot) or upgrade (built plot),
+    /// optionally paying crystals to finish instantly (mirrors UpgradeModal.vue's "Улучшить" /
+    /// "Завершить за 💎" buttons — Api\VillageController::slotAction()).
+    func performSlotAction(villageID: Int, slot: Int, buildingKey: String, instant: Bool, token: String) async throws {
+        var request = try makeRequest(path: "/api/villages/\(villageID)/slots/\(slot)", method: "POST")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(SlotActionBody(building_key: buildingKey, instant: instant))
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+    }
+
     func fetchWorldMap(centerX: Int, centerY: Int, token: String) async throws -> WorldMapResponse {
         var request = try makeRequest(path: "/api/map?x=\(centerX)&y=\(centerY)", method: "GET")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

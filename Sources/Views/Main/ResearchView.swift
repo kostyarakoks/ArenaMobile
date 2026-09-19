@@ -38,7 +38,7 @@ struct ResearchView: View {
         } else if let detail {
             List {
                 Section {
-                    Text("Уровень академии: \(detail.academyLevel)").font(.footnote)
+                    Text("Уровень академии: \(detail.academyLevel)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
                     if let active = detail.active {
                         Text("Сейчас изучается: \(active.label)").font(.footnote).foregroundStyle(.orange)
                     }
@@ -47,19 +47,19 @@ struct ResearchView: View {
                     ForEach(detail.chain) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(entry.label).font(.footnote.bold())
+                                Text(entry.label).font(.footnote.bold()).foregroundStyle(entry.isResearched ? GameTheme.textSecondary : GameTheme.amber)
                                 if entry.isResearched {
-                                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption)
+                                    Image(systemName: "checkmark.seal.fill").foregroundStyle(GameTheme.good).font(.caption)
                                 }
                                 Spacer()
                             }
                             if let description = entry.description, !description.isEmpty {
-                                Text(description).font(.caption2).foregroundStyle(.secondary)
+                                Text(description).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             }
-                            Text(costLabel(entry.cost)).font(.caption2).foregroundStyle(.secondary)
+                            Text(costLabel(entry.cost)).font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             if !entry.isResearched {
                                 Button("Изучить") { Task { await start(key: entry.key) } }
-                                    .font(.caption)
+                                    .buttonStyle(.gamePrimary)
                                     .disabled(isBusy || !entry.isAvailable || detail.active != nil)
                             }
                         }

@@ -93,6 +93,7 @@ struct MarketView: View {
                 } label: {
                     Label("Создать предложение", systemImage: "plus.circle")
                 }
+                .buttonStyle(.gamePrimary)
             }
             if !detail.mine.isEmpty {
                 Section("Мои предложения") {
@@ -108,14 +109,14 @@ struct MarketView: View {
             }
             Section("Предложения игроков") {
                 if detail.offers.isEmpty {
-                    Text("Пока нет предложений.").foregroundStyle(.secondary)
+                    Text("Пока нет предложений.").foregroundStyle(GameTheme.textMuted)
                 }
                 ForEach(detail.offers) { offer in
                     VStack(alignment: .leading, spacing: 4) {
                         offerLabel(give: offer.offerResource, giveAmount: offer.offerAmount, want: offer.requestResource, wantAmount: offer.requestAmount)
-                        Text("\(offer.seller) · \(offer.village)").font(.caption2).foregroundStyle(.secondary)
+                        Text("\(offer.seller) · \(offer.village)").font(.caption2).foregroundStyle(GameTheme.textSecondary)
                         Button("Обменять") { Task { await acceptResourceOffer(id: offer.id) } }
-                            .font(.caption)
+                            .buttonStyle(.gamePrimary)
                     }
                 }
             }
@@ -130,6 +131,7 @@ struct MarketView: View {
             Text("\(icon(for: want)) \(wantAmount)")
         }
         .font(.footnote)
+        .foregroundStyle(GameTheme.textPrimary)
     }
 
     private func icon(for resource: String) -> String {
@@ -144,12 +146,15 @@ struct MarketView: View {
                 } label: {
                     Label("Выставить предмет", systemImage: "plus.circle")
                 }
+                .buttonStyle(.gamePrimary)
             }
             if !detail.myItemOffers.isEmpty {
                 Section("Мои предметы") {
                     ForEach(detail.myItemOffers) { offer in
                         HStack {
-                            Text("\(offer.label) — \(icon(for: offer.priceResource)) \(offer.priceAmount)").font(.footnote)
+                            Text("\(offer.label) — \(icon(for: offer.priceResource)) \(offer.priceAmount)")
+                                .font(.footnote)
+                                .foregroundStyle(GameTheme.textPrimary)
                             Spacer()
                             Button("Отменить") { Task { await cancelItemOffer(id: offer.id) } }
                                 .font(.caption)
@@ -159,16 +164,16 @@ struct MarketView: View {
             }
             Section("Предметы игроков") {
                 if detail.itemOffers.isEmpty {
-                    Text("Пока нет предложений.").foregroundStyle(.secondary)
+                    Text("Пока нет предложений.").foregroundStyle(GameTheme.textMuted)
                 }
                 ForEach(detail.itemOffers) { offer in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(offer.icon) \(offer.label)").font(.footnote)
+                        Text("\(offer.icon) \(offer.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
                         Text("\(offer.seller) · \(offer.village) · \(icon(for: offer.priceResource)) \(offer.priceAmount)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(GameTheme.textSecondary)
                         Button("Купить") { Task { await acceptItemOffer(id: offer.id) } }
-                            .font(.caption)
+                            .buttonStyle(.gamePrimary)
                     }
                 }
             }

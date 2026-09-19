@@ -33,23 +33,22 @@ struct HelpView: View {
         } else if let helpContent {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text(helpContent.subtitle).font(.footnote).foregroundStyle(.secondary)
+                    Text(helpContent.subtitle).font(.footnote).foregroundStyle(GameTheme.textSecondary)
                     ForEach(helpContent.sections.keys.sorted(), id: \.self) { key in
                         if let section = helpContent.sections[key] {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("\(section.icon) \(section.title)").font(.headline)
+                                Text("\(section.icon) \(section.title)").font(.headline).foregroundStyle(GameTheme.amber)
                                 ForEach(Array(section.body.enumerated()), id: \.offset) { _, paragraph in
-                                    Text(paragraph).font(.footnote)
+                                    Text(paragraph).font(.footnote).foregroundStyle(GameTheme.textPrimary)
                                 }
                             }
-                            .padding(14)
-                            .background(Color.gray.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .gamePanel(padding: 14)
                         }
                     }
                 }
                 .padding(16)
             }
+            .gameScreenBackground()
         } else {
             Color.clear
         }

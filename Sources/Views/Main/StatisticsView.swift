@@ -45,13 +45,16 @@ struct StatisticsView: View {
                 List {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         HStack {
-                            Text("#\(index + 1)").font(.caption).foregroundStyle(.secondary).frame(width: 32, alignment: .leading)
+                            Text("#\(index + 1)")
+                                .font(.caption)
+                                .foregroundStyle(index == 0 ? GameTheme.amber : GameTheme.textMuted)
+                                .frame(width: 32, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(row.name).font(.footnote)
-                                Text("\(row.villagesCount) 🏘️").font(.caption2).foregroundStyle(.secondary)
+                                Text(row.name).font(.footnote).foregroundStyle(index == 0 ? GameTheme.amber : GameTheme.textPrimary)
+                                Text("\(row.villagesCount) 🏘️").font(.caption2).foregroundStyle(GameTheme.textSecondary)
                             }
                             Spacer()
-                            Text("\(metric.value(row))").font(.footnote.bold().monospacedDigit())
+                            Text("\(metric.value(row))").font(.footnote.bold().monospacedDigit()).foregroundStyle(GameTheme.textPrimary)
                         }
                     }
                 }

@@ -52,7 +52,8 @@ struct BackpackView: View {
                                     Text("x\(item.quantity)").font(.caption).foregroundStyle(.secondary)
                                     if item.usable {
                                         Button("Использовать") { Task { await use(itemKey: item.itemKey) } }
-                                            .font(.caption)
+                                            .buttonStyle(.gamePrimary)
+                                            .fixedSize()
                                             .disabled(isBusy || villages.isEmpty)
                                     }
                                 }
