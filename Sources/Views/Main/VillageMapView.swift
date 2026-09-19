@@ -28,10 +28,24 @@ struct VillageMapView: View {
 
     var body: some View {
         content
-            .navigationTitle(detail?.village.name ?? "Город")
+            // Resources move into the header bar itself (see headerBar below) instead of a
+            // separate panel above the map, and the title bar stays compact (.inline) so the
+            // map gets the rest of the screen — "ресурсы в хедер, карту на весь экран".
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if villages.count > 1 {
-                    ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .principal) {
+                    headerBar
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    // The map itself no longer sits in a ScrollView (it now fills the full
+                    // screen edge to edge), so the usual pull-to-refresh gesture has nothing to
+                    // attach to — this button replaces it.
+                    Button {
+                        if let id = selectedVillageID { Task { await loadDetail(id: id) } }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    if villages.count > 1 {
                         Menu {
                             ForEach(villages) { village in
                                 Button {
@@ -55,9 +69,6 @@ struct VillageMapView: View {
             .task {
                 guard villages.isEmpty else { return }
                 await loadVillages()
-            }
-            .refreshable {
-                if let id = selectedVillageID { await loadDetail(id: id) }
             }
             .sheet(item: Binding(get: { tappedSlot.map { IdentifiableInt(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
                 if let detail, let villageID = selectedVillageID {
@@ -97,45 +108,45 @@ struct VillageMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .gameScreenBackground()
         } else if let detail {
-            ScrollView {
-                VStack(spacing: 16) {
-                    resourceHeader(detail.village)
-                    mapCanvas(detail)
-                }
-                .padding(.vertical, 12)
-            }
-            .gameScreenBackground()
+            // Fills exactly the space between the nav bar and the bottom dock — no ScrollView,
+            // no side padding, matching the web's own "карта занимает весь контейнер" layout
+            // (Village/Buildings.vue's own height: calc(...) container).
+            mapCanvas(detail)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gameScreenBackground()
         } else {
             Color.clear.gameScreenBackground()
         }
     }
 
-    private func resourceHeader(_ info: VillageDetail.VillageInfo) -> some View {
-        VStack(spacing: 6) {
-            Text("(\(info.x)|\(info.y))\(info.isCapital ? " · столица" : "")")
-                .font(.caption)
-                .foregroundStyle(GameTheme.textMuted)
-            HStack(spacing: 18) {
-                resourceStat(icon: "🌲", value: info.wood)
-                resourceStat(icon: "🧱", value: info.clay)
-                resourceStat(icon: "⛏️", value: info.iron)
-                resourceStat(icon: "🌾", value: info.crop)
-                VStack(spacing: 0) {
-                    Text("👥").font(.callout)
-                    Text("\(info.population)").font(.caption.monospacedDigit()).foregroundStyle(GameTheme.textPrimary)
+    /// Compact village name + live resource strip, replacing the old standalone panel — sits
+    /// in the nav bar's principal slot so the map below gets the full remaining height.
+    private var headerBar: some View {
+        VStack(spacing: 2) {
+            if let info = detail?.village {
+                Text("\(info.name) (\(info.x)|\(info.y))\(info.isCapital ? " ★" : "")")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(GameTheme.amber)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                HStack(spacing: 9) {
+                    miniResource("🌲", info.wood)
+                    miniResource("🧱", info.clay)
+                    miniResource("⛏️", info.iron)
+                    miniResource("🌾", info.crop)
+                    miniResource("👥", info.population)
                 }
+            } else {
+                Text("Город").font(.system(size: 15, weight: .bold)).foregroundStyle(GameTheme.amber)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .gamePanel()
-        .padding(.horizontal)
+        .frame(maxWidth: 230)
     }
 
-    private func resourceStat(icon: String, value: Int) -> some View {
-        VStack(spacing: 0) {
-            Text(icon).font(.callout)
-            Text("\(value)").font(.caption.monospacedDigit()).foregroundStyle(GameTheme.textPrimary)
+    private func miniResource(_ icon: String, _ value: Int) -> some View {
+        HStack(spacing: 2) {
+            Text(icon).font(.system(size: 9))
+            Text("\(value)").font(.system(size: 10, weight: .semibold, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
         }
     }
 
@@ -160,7 +171,7 @@ struct VillageMapView: View {
             acc[item.slot] = item
         }
 
-        return ZoomableMapContainer(aspectRatio: width / height) {
+        return ZoomableMapContainer {
             // One GeometryReader for the whole canvas — its `geo.size` is the actual rendered
             // pixel size (which changes with pinch-zoom), so both the glow and the marker
             // positions scale off the SAME real size instead of the raw viewbox numbers.
@@ -169,11 +180,13 @@ struct VillageMapView: View {
                 let scaleY = geo.size.height / height
 
                 ZStack {
+                    // No corner rounding/border here on purpose — the map now fills the screen
+                    // edge to edge between the nav bar and the bottom dock ("карту на весь
+                    // экран"), so a rounded card frame would just clip corners against the
+                    // screen's own edges instead of reading as a card.
                     backgroundImage(path: backgroundPath)
                         .frame(width: geo.size.width, height: geo.size.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                    RoundedRectangle(cornerRadius: 16).stroke(GameTheme.panelBorder, lineWidth: 1)
+                        .clipped()
 
                     // Warm glow behind the main building (slot 8, centred on the classic
                     // canvas) — same cosmetic touch Buildings.vue draws behind its own hub slot.
@@ -205,7 +218,6 @@ struct VillageMapView: View {
                 }
             }
         }
-        .padding(.horizontal)
     }
 
     // Local asset (bundled by build_ios_assets.py) when this is one of the 4 classic
@@ -373,7 +385,6 @@ private struct ConstructionBadge: View {
 /// zoomed instead of needing a hand-rolled drag gesture) — native equivalent of
 /// Components/ZoomableMap.vue.
 private struct ZoomableMapContainer<Content: View>: View {
-    let aspectRatio: Double
     @ViewBuilder var content: () -> Content
 
     @State private var zoom: CGFloat = 1
@@ -381,8 +392,13 @@ private struct ZoomableMapContainer<Content: View>: View {
 
     var body: some View {
         GeometryReader { outer in
+            // Fills whatever space the parent offers (the whole screen minus the nav bar and
+            // bottom dock, per "карту на весь экран") instead of aspect-locking to the viewbox
+            // — the background art itself covers via .aspectRatio(contentMode: .fill) (see
+            // backgroundImage), and marker positions already scale off this same real size
+            // (mapCanvas's own GeometryReader), so nothing needs the viewbox ratio here.
             let baseWidth = outer.size.width
-            let baseHeight = baseWidth / aspectRatio
+            let baseHeight = outer.size.height
             let effectiveZoom = max(1, min(3, zoom * pinchDelta))
 
             ScrollView([.horizontal, .vertical], showsIndicators: false) {
@@ -399,7 +415,6 @@ private struct ZoomableMapContainer<Content: View>: View {
                     }
             )
         }
-        .aspectRatio(aspectRatio, contentMode: .fit)
     }
 }
 

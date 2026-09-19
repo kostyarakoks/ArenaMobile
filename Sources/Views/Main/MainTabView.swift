@@ -34,6 +34,12 @@ struct MainTabView: View {
         }
     }
 
+    // Fixed row height, taller than the plain content needs — the icon row centers inside it
+    // (see dockButton's own maxHeight: .infinity) while the bar texture behind it bleeds on
+    // down through the home-indicator safe area (.ignoresSafeArea below), so the icons land in
+    // the visual middle of the whole painted bar instead of hugging its top edge.
+    private let dockHeight: CGFloat = 74
+
     private var bottomDock: some View {
         HStack(spacing: 0) {
             ForEach(dockItems) { item in
@@ -41,11 +47,13 @@ struct MainTabView: View {
                     selected = item
                 }
             }
-            dockButton(label: "Ещё", icon: "⋯", img: nil, isActive: showMore) {
+            // nav_more.imageset was already bundled (build_ios_assets.py) but never wired up —
+            // "Ещё" was still falling back to the "⋯" emoji.
+            dockButton(label: "Ещё", icon: "⋯", img: "nav_more", isActive: showMore) {
                 showMore = true
             }
         }
-        .padding(.vertical, 6)
+        .frame(height: dockHeight)
         // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
         // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
         // gradient background so the native dock matches the web app's finished look exactly,
@@ -71,23 +79,23 @@ struct MainTabView: View {
 
     private func dockButton(label: String, icon: String, img: String?, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 // Local asset art (bundled in the app — see build_ios_assets.py) when available,
                 // falling back to the emoji otherwise (same fallback BottomNav.vue uses for the
-                // "Деревня" toggle state and the "Ещё" spots that never got painted art).
+                // "Деревня" toggle state).
                 if let img {
                     Image(img)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 26, height: 26)
+                        .frame(width: 31, height: 31)
                         .shadow(color: .black.opacity(0.5), radius: 1, y: 1)
                 } else {
-                    Text(icon).font(.system(size: 20))
+                    Text(icon).font(.system(size: 24))
                 }
                 Text(label).font(.system(size: 10)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .foregroundStyle(isActive ? Color(red: 1, green: 0.84, blue: 0.47) : .white.opacity(0.75))
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .padding(.vertical, 6)
             .background(isActive ? Color.white.opacity(0.08) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
