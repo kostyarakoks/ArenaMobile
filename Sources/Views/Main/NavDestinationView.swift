@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// What each nav item (see NavItem.swift) opens. Most are still plain placeholders — real
-/// content lands here screen by screen as routes/api.php grows past auth. "Профиль" and
-/// "Деревня" are wired to real data already (GameUser from AuthSession, VillageMapView's own
-/// network calls) — working end-to-end examples of the pattern for whichever tab gets built
-/// out next.
+/// content lands here screen by screen as routes/api.php grows past auth. "Профиль", "Деревня"
+/// and "Карта" are wired to real data already (GameUser from AuthSession, VillageMapView's and
+/// WorldMapView's own network calls) — working end-to-end examples of the pattern for whichever
+/// tab gets built out next.
 struct NavDestinationView: View {
     let item: NavItem
 
@@ -14,6 +14,8 @@ struct NavDestinationView: View {
             ProfileScreen()
         case "village":
             VillageMapView()
+        case "map":
+            WorldMapView()
         default:
             PlaceholderScreen(item: item)
         }

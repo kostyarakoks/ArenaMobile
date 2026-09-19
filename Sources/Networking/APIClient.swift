@@ -118,6 +118,32 @@ final class APIClient {
         return decoded
     }
 
+    func fetchWorldMap(centerX: Int, centerY: Int, token: String) async throws -> WorldMapResponse {
+        var request = try makeRequest(path: "/api/map?x=\(centerX)&y=\(centerY)", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(WorldMapResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded
+    }
+
+    func fetchPublicVillage(id: Int, token: String) async throws -> PublicVillage {
+        var request = try makeRequest(path: "/api/map/villages/\(id)", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(PublicVillage.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded
+    }
+
     func logout(token: String) async {
         guard var request = try? makeRequest(path: "/api/logout", method: "POST") else { return }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
