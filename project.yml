@@ -19,7 +19,10 @@ targets:
     info:
       path: Generated/Info.plist
       properties:
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIImageName: Logo
+          UIColorName: LaunchBackground
+          UIImageRespectsSafeAreaInsets: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:
