@@ -160,14 +160,14 @@ private struct ComposeMessageSheet: View {
 
     @State private var recipient = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var messageBody = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Получатель (имя игрока)", text: $recipient)
                 TextField("Тема", text: $subject)
-                TextField("Текст сообщения", text: $body, axis: .vertical).lineLimit(5...10)
+                TextField("Текст сообщения", text: $messageBody, axis: .vertical).lineLimit(5...10)
             }
             .navigationTitle("Новое сообщение")
             .navigationBarTitleDisplayMode(.inline)
@@ -176,11 +176,11 @@ private struct ComposeMessageSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Отправить") {
                         Task {
-                            await onSubmit(recipient, subject, body)
+                            await onSubmit(recipient, subject, messageBody)
                             dismiss()
                         }
                     }
-                    .disabled(recipient.isEmpty || subject.isEmpty || body.isEmpty)
+                    .disabled(recipient.isEmpty || subject.isEmpty || messageBody.isEmpty)
                 }
             }
         }

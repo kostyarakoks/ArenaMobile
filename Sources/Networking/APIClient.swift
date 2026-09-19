@@ -448,7 +448,7 @@ final class APIClient {
     // MARK: - Reports
 
     private struct ReportsResponse: Codable { let reports: [ReportSummary] }
-    private struct ReportResponse: Codable { let report: ReportDetail }
+    private struct ReportResponse: Decodable { let report: ReportDetail }
 
     func fetchReports(token: String) async throws -> [ReportSummary] {
         var request = try makeRequest(path: "/api/reports", method: "GET")

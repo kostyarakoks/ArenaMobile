@@ -60,7 +60,7 @@ struct BackpackView: View {
                         }
                     }
                 }
-                if BackpackCategory.allCases.allSatisfy { (response.items[$0.rawValue] ?? []).isEmpty } {
+                if BackpackCategory.allCases.allSatisfy({ (response.items[$0.rawValue] ?? []).isEmpty }) {
                     Text("Рюкзак пуст.").foregroundStyle(.secondary)
                 }
             }
