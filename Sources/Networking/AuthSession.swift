@@ -73,6 +73,16 @@ final class AuthSession: ObservableObject {
         }
     }
 
+    /// Re-fetches /api/me and updates currentUser in place — called after any action that
+    /// changes something GameUser carries (e.g. joining/leaving an alliance changes
+    /// allianceId) so the rest of the app sees the new value without a full re-login.
+    func refreshCurrentUser() async {
+        guard let token else { return }
+        if let user = try? await APIClient.shared.fetchMe(token: token) {
+            currentUser = user
+        }
+    }
+
     /// Any authenticated screen (e.g. VillageMapView) can call this from its catch block —
     /// if the token got revoked server-side (password change, admin action, expired) mid-
     /// session, this drops the app back to LoginView instead of leaving it stuck showing a

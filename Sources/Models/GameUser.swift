@@ -13,10 +13,12 @@ struct GameUser: Codable, Equatable {
     let silver: Int
     let arenaPoints: Int
     let isAdmin: Bool
+    let allianceId: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name, email, tribe, locale, gold, silver
         case arenaPoints = "arena_points"
         case isAdmin = "is_admin"
+        case allianceId = "alliance_id"
     }
 }

@@ -16,6 +16,36 @@ struct NavDestinationView: View {
             VillageMapView()
         case "map":
             WorldMapView()
+        case "hero":
+            HeroView()
+        case "market":
+            MarketView()
+        case "alliance":
+            AllianceView()
+        case "shop":
+            ShopView()
+        case "rally_point":
+            RallyPointView()
+        case "commanders":
+            CommandersView()
+        case "arena":
+            ArenaView()
+        case "backpack":
+            BackpackView()
+        case "reports":
+            ReportsView()
+        case "messages":
+            MessagesView()
+        case "research":
+            ResearchView()
+        case "tech_tree":
+            TechTreeView()
+        case "statistics":
+            StatisticsView()
+        case "quests":
+            QuestsView()
+        case "help":
+            HelpView()
         default:
             PlaceholderScreen(item: item)
         }
