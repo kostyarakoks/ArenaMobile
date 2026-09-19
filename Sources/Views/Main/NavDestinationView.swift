@@ -1,17 +1,20 @@
 import SwiftUI
 
-/// What each nav item (see NavItem.swift) opens. Everything except "Профиль" is still a plain
-/// placeholder — real content lands here screen by screen as routes/api.php grows past auth.
-/// "Профиль" is wired to the real logged-in user already, as a working end-to-end example of
-/// the pattern: GameUser from AuthSession, no extra network call needed since MainTabView
-/// already has it.
+/// What each nav item (see NavItem.swift) opens. Most are still plain placeholders — real
+/// content lands here screen by screen as routes/api.php grows past auth. "Профиль" and
+/// "Деревня" are wired to real data already (GameUser from AuthSession, VillageMapView's own
+/// network calls) — working end-to-end examples of the pattern for whichever tab gets built
+/// out next.
 struct NavDestinationView: View {
     let item: NavItem
 
     var body: some View {
-        if item.id == "profile" {
+        switch item.id {
+        case "profile":
             ProfileScreen()
-        } else {
+        case "village":
+            VillageMapView()
+        default:
             PlaceholderScreen(item: item)
         }
     }
@@ -69,4 +72,5 @@ private struct ProfileScreen: View {
     NavigationStack {
         NavDestinationView(item: NavItem.mainItems[0])
     }
+    .environmentObject(AuthSession())
 }

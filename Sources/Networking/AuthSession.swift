@@ -29,6 +29,11 @@ final class AuthSession: ObservableObject {
         }
     }
 
+    /// Read-only outward view of the token, for views/services that need to make their own
+    /// authenticated requests (e.g. VillageMapView loading /api/villages) without AuthSession
+    /// having to grow a method for every single endpoint in the app.
+    var bearerToken: String? { token }
+
     /// Call once, right after launch (see ArenaMobileApp.swift) — if a token was saved from a
     /// previous session, confirms it's still valid (the player might have been logged out
     /// server-side, or the token could have been revoked) before dropping straight into
@@ -65,6 +70,16 @@ final class AuthSession: ObservableObject {
             self.phase = .signedIn
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Не удалось войти."
+        }
+    }
+
+    /// Any authenticated screen (e.g. VillageMapView) can call this from its catch block —
+    /// if the token got revoked server-side (password change, admin action, expired) mid-
+    /// session, this drops the app back to LoginView instead of leaving it stuck showing a
+    /// generic network-error state forever.
+    func signOutIfUnauthorized(_ error: Error) {
+        if case APIError.unauthorized = error {
+            logout()
         }
     }
 

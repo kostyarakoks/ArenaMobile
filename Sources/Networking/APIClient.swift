@@ -88,6 +88,36 @@ final class APIClient {
         return decoded.user
     }
 
+    private struct VillagesResponse: Codable {
+        let villages: [VillageSummary]
+    }
+
+    func fetchVillages(token: String) async throws -> [VillageSummary] {
+        var request = try makeRequest(path: "/api/villages", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(VillagesResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded.villages
+    }
+
+    func fetchVillage(id: Int, token: String) async throws -> VillageDetail {
+        var request = try makeRequest(path: "/api/villages/\(id)", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(VillageDetail.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded
+    }
+
     func logout(token: String) async {
         guard var request = try? makeRequest(path: "/api/logout", method: "POST") else { return }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
