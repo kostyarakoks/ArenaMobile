@@ -223,7 +223,7 @@ private struct BuildingInfoSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(building.label).font(.title3.bold())
+            Text(building.label ?? "Пустой участок").font(.title3.bold())
             if building.buildingKey != nil {
                 Text("Уровень \(building.level)").foregroundStyle(.secondary)
                 if building.hp < 100 {

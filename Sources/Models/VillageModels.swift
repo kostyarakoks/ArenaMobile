@@ -46,7 +46,11 @@ struct VillageDetail: Codable {
         let slot: Int
         let buildingKey: String?
         let level: Int
-        let label: String
+        // Nil for an empty plot — VillageBuilding::label() on the server returns null when
+        // building_key is null, same as the web app's Buildings.vue gets. A non-optional String
+        // here made JSONDecoder throw on any village with an unbuilt slot (i.e. almost every
+        // village), which surfaced as "Сервер ответил в неожиданном формате" in the app.
+        let label: String?
         let gid: Int?
         let hp: Int
 
