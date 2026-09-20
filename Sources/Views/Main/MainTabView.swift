@@ -14,12 +14,27 @@ struct MainTabView: View {
     @State private var selected: NavItem = .village
     @State private var showMore = false
 
+    // Remembers whichever of village/map was last actually shown, so the toggle slot has
+    // something to return to once you've navigated away to a third screen (profile, quests,
+    // etc.) — see toggleItem below. Starts at .village since that's `selected`'s own initial
+    // value.
+    @State private var lastMapOrVillage: NavItem = .village
+
     // Same collapse BottomNav.vue's `villageMapItem` computed does: village/map share ONE dock
     // slot, showing whichever one you're NOT currently on (tapping it switches to it) — so the
     // dock is 5 items + "Ещё" (6 buttons total), matching the web version's count, instead of
     // listing village and map as two separate always-visible slots.
     private var isOnMap: Bool { selected.id == "map" }
-    private var toggleItem: NavItem { isOnMap ? .village : .map }
+    private var isOnMapOrVillage: Bool { selected.id == "village" || selected.id == "map" }
+    // While on village or map, the toggle offers the OTHER one of the pair (unchanged
+    // behavior). From any other screen (profile, quests, ...) it used to always fall back to
+    // .map regardless of what you'd been looking at — reported as: "кнопка «город» и «карта»
+    // меняються только если включен город или карта, в остальных случаях... если ушел с карты,
+    // то при нажатие на кнопку я должен вернуться на карту, так же и с городом". Fixed by
+    // falling back to whichever of the two was last actually active instead of hardcoding .map.
+    private var toggleItem: NavItem {
+        isOnMapOrVillage ? (isOnMap ? .village : .map) : lastMapOrVillage
+    }
     private var dockItems: [NavItem] {
         [toggleItem] + NavItem.mainItems.filter { $0.id != "village" && $0.id != "map" }
     }
@@ -50,6 +65,11 @@ struct MainTabView: View {
         }
         .task {
             await villageSession.loadIfNeeded(session)
+        }
+        .onChange(of: selected) { newValue in
+            if newValue.id == "village" || newValue.id == "map" {
+                lastMapOrVillage = newValue
+            }
         }
     }
 

@@ -10,9 +10,6 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var session: AuthSession
 
-    @State private var serverURL: String = UserDefaults.standard.string(forKey: APIClient.baseURLDefaultsKey) ?? ""
-    @State private var showServerField = false
-
     // Instant-play fields
     @State private var nickname = ""
     @State private var tribe = "roman"
@@ -28,16 +25,16 @@ struct LoginView: View {
         ("gaul", "Галлы"),
     ]
 
-    private var serverIsValid: Bool {
-        URL(string: serverURL)?.scheme?.hasPrefix("http") == true
-    }
-
+    // Used to gate submission on a per-install "server address" field the player typed in —
+    // removed per "убрать при регистрации адрес сервера, его надо сделать постоянным": the
+    // server is now a fixed constant (APIClient.defaultServerURLString), always valid, so there's
+    // nothing left to validate here.
     private var canPlay: Bool {
-        !nickname.trimmingCharacters(in: .whitespaces).isEmpty && serverIsValid
+        !nickname.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var canSignIn: Bool {
-        !email.trimmingCharacters(in: .whitespaces).isEmpty && !password.isEmpty && serverIsValid
+        !email.trimmingCharacters(in: .whitespaces).isEmpty && !password.isEmpty
     }
 
     var body: some View {
@@ -79,37 +76,6 @@ struct LoginView: View {
                             }
                         }
                     }
-
-                    DisclosureGroup(isExpanded: $showServerField) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            TextField("https://ваш-сервер.example.com", text: $serverURL)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                                .padding(12)
-                                .background(.white.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .foregroundStyle(.white)
-                                .onChange(of: serverURL) { newValue in
-                                    // Single-parameter onChange, not the two-parameter
-                                    // (oldValue, newValue) overload — that one needs iOS 17,
-                                    // and this project's deployment target is iOS 16.
-                                    UserDefaults.standard.set(newValue, forKey: APIClient.baseURLDefaultsKey)
-                                }
-                            Text("Адрес вашего сайта с игрой, без /login в конце.")
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.6))
-                        }
-                        .padding(.top, 8)
-                    } label: {
-                        Label(serverURL.isEmpty ? "Указать адрес сервера" : serverURL, systemImage: "server.rack")
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    .tint(.white)
-                    .padding(12)
-                    .background(.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     if let error = session.errorMessage {
                         Text(error)
@@ -174,9 +140,6 @@ struct LoginView: View {
                 .padding(.horizontal, 28)
                 .padding(.bottom, 40)
             }
-        }
-        .onAppear {
-            if serverURL.isEmpty { showServerField = true }
         }
     }
 

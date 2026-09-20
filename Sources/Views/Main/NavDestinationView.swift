@@ -19,9 +19,9 @@ struct NavDestinationView: View {
         case "profile":
             ProfileScreen()
         case "village":
-            VillageMapView()
+            VillageMapView(selectItem: { selectItem?($0) })
         case "map":
-            WorldMapView(onOwnVillageSelected: { selectItem?(.village) })
+            WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
         case "hero":
             HeroView()
         case "market":

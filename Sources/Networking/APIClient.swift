@@ -29,17 +29,17 @@ enum APIError: LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    /// Persisted so the app can point at a different server (staging, a friend's install, ...)
-    /// without a rebuild. Set this on the login screen before signing in — see LoginView.swift.
-    /// There is no sensible built-in default (every TravianZ install lives at its own domain),
-    /// so this starts empty and LoginView refuses to submit until it looks like a URL.
+    /// Used to be a per-install setting typed into a "server address" field on the login screen
+    /// (persisted under this same UserDefaults key) — removed per "убрать при регистрации адрес
+    /// сервера, его надо сделать постоянным, пока сервер https://game.playstation-code.com": for
+    /// now there's exactly one server, so it's a plain constant instead of something every player
+    /// has to type in correctly before they can even register. Bumping to a different server (or
+    /// back to a configurable one) is a one-line change here, not a client-facing setting.
     static let baseURLDefaultsKey = "api.baseURL"
+    static let defaultServerURLString = "https://game.playstation-code.com"
 
     var baseURL: URL? {
-        guard let raw = UserDefaults.standard.string(forKey: Self.baseURLDefaultsKey),
-              !raw.trimmingCharacters(in: .whitespaces).isEmpty,
-              let url = URL(string: raw) else { return nil }
-        return url
+        URL(string: Self.defaultServerURLString)
     }
 
     private let session: URLSession = .shared
@@ -75,15 +75,29 @@ final class APIClient {
         return (decoded.token, decoded.user)
     }
 
-    private struct RegisterBody: Encodable { let name: String; let tribe: String; let device_name: String }
+    private struct RegisterBody: Encodable {
+        let name: String
+        let tribe: String
+        let device_name: String
+        // Apple's stable-across-reinstalls Game Center identifier (GKLocalPlayer.local's
+        // teamPlayerID — see GameCenterAuth.swift) — sent so Api\AuthController::register() can
+        // recognize "this device already has an account" and sign back into it instead of
+        // creating a new one, per "подключить гейм центер что бы после выхода из игры нельзя
+        // было регистровать новый аккаунт". nil when Game Center sign-in failed/was declined;
+        // register() still works in that case, just without the anti-multi-account check.
+        let game_center_player_id: String?
+    }
 
     /// POST /api/register — the "instant play" flow (Api\AuthController::register): the player
     /// only ever types a nickname and picks a tribe, never an email or password (those are
     /// generated server-side and never surfaced back here — the bearer token this returns is
-    /// the account's one and only credential from this point on, same as login()'s).
-    func register(name: String, tribe: String, deviceName: String) async throws -> (token: String, user: GameUser) {
+    /// the account's one and only credential from this point on, same as login()'s). When
+    /// `gameCenterPlayerID` already has an account attached server-side, the server returns THAT
+    /// account's token instead of creating a new one — so the returned user may not be a fresh
+    /// signup even though this is the register() call.
+    func register(name: String, tribe: String, deviceName: String, gameCenterPlayerID: String?) async throws -> (token: String, user: GameUser) {
         var request = try makeRequest(path: "/api/register", method: "POST")
-        request.httpBody = try JSONEncoder().encode(RegisterBody(name: name, tribe: tribe, device_name: deviceName))
+        request.httpBody = try JSONEncoder().encode(RegisterBody(name: name, tribe: tribe, device_name: deviceName, game_center_player_id: gameCenterPlayerID))
 
         let (data, response) = try await perform(request)
         try Self.checkStatus(response, data: data, decoder: decoder)

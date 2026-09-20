@@ -52,3 +52,11 @@ targets:
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"
         DEVELOPMENT_TEAM: ""
+        # Needed for GKLocalPlayer sign-in (GameCenterAuth.swift) — see
+        # "подключить гейм центер что бы после выхода из игры нельзя было регистровать новый
+        # аккаунт". The unsigned CI build ignores this (CODE_SIGNING_ALLOWED: "NO" above); when
+        # you sign locally with Sideloadly/your own Apple ID, Xcode also needs "Game Center"
+        # ticked under Signing & Capabilities for that ID's provisioning profile to actually
+        # include this entitlement — this file alone doesn't grant it, it just tells the build
+        # which entitlements to embed once the profile allows them.
+        CODE_SIGN_ENTITLEMENTS: ArenaMobile.entitlements

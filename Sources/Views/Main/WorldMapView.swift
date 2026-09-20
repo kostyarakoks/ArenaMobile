@@ -28,6 +28,10 @@ struct WorldMapView: View {
     // no-op so #Preview and any other caller that doesn't care still compiles.
     var onOwnVillageSelected: () -> Void = {}
 
+    // Same as VillageMapView's own `selectItem` — see MapOverlayControls' doc comment for why
+    // this replaced a NavigationLink push.
+    var selectItem: (NavItem) -> Void = { _ in }
+
     @State private var mapData: WorldMapResponse?
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -51,7 +55,7 @@ struct WorldMapView: View {
         // карта" shape the web version's Map/Index.vue has under GameLayout.
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .trailing) {
-            MapOverlayControls()
+            MapOverlayControls(selectItem: selectItem)
                 .padding(.trailing, 12)
         }
         .overlay(alignment: .bottomLeading) {

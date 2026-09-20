@@ -23,6 +23,11 @@ struct VillageMapView: View {
     // screen owning its own private copy.
     @EnvironmentObject private var villageSession: VillageSession
 
+    // Threaded down from NavDestinationView's own `selectItem` (via MainTabView) so
+    // MapOverlayControls can switch the active tab through the app's one navigation mechanism
+    // instead of pushing onto the NavigationStack — see MapOverlayControls' doc comment.
+    var selectItem: (NavItem) -> Void = { _ in }
+
     @State private var tappedSlot: Int?
     // Throttles the construction-finished poll below — set to the moment a refresh was last
     // actually fired, not merely checked, so a slow/failed request gets retried a few seconds
@@ -44,7 +49,7 @@ struct VillageMapView: View {
             // shortcuts that used to live in that header moved to instead).
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .trailing) {
-                MapOverlayControls()
+                MapOverlayControls(selectItem: selectItem)
                     .padding(.trailing, 12)
             }
             .task {

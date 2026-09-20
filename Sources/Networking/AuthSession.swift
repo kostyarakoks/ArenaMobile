@@ -84,7 +84,10 @@ final class AuthSession: ObservableObject {
 
         do {
             let deviceName = "ArenaMobile iOS (\(UIDeviceNameProvider.name))"
-            let (token, user) = try await APIClient.shared.register(name: name, tribe: tribe, deviceName: deviceName)
+            // Best-effort — see GameCenterAuth's own doc comment for why a nil result here still
+            // lets registration through rather than blocking it.
+            let gameCenterPlayerID = await GameCenterAuth.shared.authenticate()
+            let (token, user) = try await APIClient.shared.register(name: name, tribe: tribe, deviceName: deviceName, gameCenterPlayerID: gameCenterPlayerID)
             self.token = token
             self.currentUser = user
             self.phase = .signedIn

@@ -10,16 +10,32 @@ import SwiftUI
 ///
 /// Used by both VillageMapView and WorldMapView, so these stay reachable from either map without
 /// detouring through the bottom dock's "Ещё" sheet.
+///
+/// Профиль/Сообщения/Задания used to open via `NavigationLink` (a real push onto the app's one
+/// shared `NavigationStack`, owned by MainTabView). That's a second, independent navigation
+/// mechanism alongside MainTabView's own `selected = item` dock/"Ещё" switching — and mixing the
+/// two broke navigation: pushing from here left `selected` untouched, so every subsequent
+/// dock/"Ещё" tap silently changed `selected` underneath a still-visible pushed screen instead of
+/// showing anything, until the player manually hit the system back button (reported: "если
+/// перешел с карты в профиль, то больше ни какие окна не открываются"). Fixed by routing these
+/// through the SAME `selectItem` callback the dock/"Ещё" sheet already use — see MainTabView's
+/// `selected = item` and NavDestinationView's `selectItem` — so there's only ever one navigation
+/// mechanism for the whole signed-in app, and this view no longer needs its own NavigationStack
+/// entry at all.
 struct MapOverlayControls: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
 
+    /// Switches MainTabView's own active tab — passed down from VillageMapView/WorldMapView,
+    /// which get it from NavDestinationView's own `selectItem` (see MainTabView.swift).
+    var selectItem: (NavItem) -> Void = { _ in }
+
     var body: some View {
         VStack(spacing: 10) {
             villageSwitcher
-            overlayLink(image: "icon_gear", id: "profile", icon: "👤", label: "Профиль")
-            overlayLink(image: "icon_messages", id: "messages", icon: "✉️", label: "Сообщения")
-            overlayLink(image: "icon_quests", id: "quests", icon: "📜", label: "Задания")
+            overlayButton(image: "icon_gear", id: "profile", icon: "👤", label: "Профиль")
+            overlayButton(image: "icon_messages", id: "messages", icon: "✉️", label: "Сообщения")
+            overlayButton(image: "icon_quests", id: "quests", icon: "📜", label: "Задания")
         }
     }
 
@@ -48,9 +64,9 @@ struct MapOverlayControls: View {
         }
     }
 
-    private func overlayLink(image: String, id: String, icon: String, label: String) -> some View {
-        NavigationLink {
-            NavDestinationView(item: NavItem(id: id, icon: icon, label: label))
+    private func overlayButton(image: String, id: String, icon: String, label: String) -> some View {
+        Button {
+            selectItem(NavItem(id: id, icon: icon, label: label))
         } label: {
             overlayButtonLabel(image: image)
         }
