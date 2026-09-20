@@ -41,17 +41,26 @@ struct ZoomableMapContainer<Content: View>: View {
     @State private var zoom: CGFloat = 1
     @State private var pinchDelta: CGFloat = 1
 
+    // Pulled out of `body` on purpose: a plain `if/else` with assignment statements (as this used
+    // to be, inline inside GeometryReader's trailing closure) gets parsed as SwiftUI's
+    // @ViewBuilder DSL there, not as ordinary Swift — each branch's assignment is a `Void`-typed
+    // statement, and the builder tries (and fails) to turn it into a View ("type '()' cannot
+    // conform to 'View'"). A regular function outside any @ViewBuilder context has no such
+    // restriction, so the same branching compiles fine here and is called as a single expression
+    // (a `let` with a function-call initializer) from inside the closure.
+    private func baseSize(for outerSize: CGSize) -> (width: CGFloat, height: CGFloat) {
+        if let contentAspect, contentAspect > 0 {
+            let height = outerSize.height
+            return (height * contentAspect, height)
+        }
+        return (outerSize.width, outerSize.height)
+    }
+
     var body: some View {
         GeometryReader { outer in
-            let baseWidth: CGFloat
-            let baseHeight: CGFloat
-            if let contentAspect, contentAspect > 0 {
-                baseHeight = outer.size.height
-                baseWidth = baseHeight * contentAspect
-            } else {
-                baseWidth = outer.size.width
-                baseHeight = outer.size.height
-            }
+            let base = baseSize(for: outer.size)
+            let baseWidth = base.width
+            let baseHeight = base.height
             let effectiveZoom = max(minZoom, min(maxZoom, zoom * pinchDelta))
 
             ScrollView([.horizontal, .vertical], showsIndicators: false) {

@@ -16,23 +16,27 @@ struct GameHeaderBar: View {
     @EnvironmentObject private var villageSession: VillageSession
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                AvatarBadge(user: session.currentUser)
+        // No longer a horizontal ScrollView: avatar + 4 resource badges are laid out with
+        // `.frame(maxWidth: .infinity)` per badge so the row always fills exactly the screen
+        // width instead of overflowing and needing a scroll to see the last resource
+        // (reported: "надо коректировать размер шрифта, что бы все ресурсы влазили без
+        // прокрутки"). Compact K/M numbers (fmtCompact) plus smaller icon/font sizes and a
+        // `.minimumScaleFactor` safety margin are what actually make that fit on narrow phones.
+        HStack(spacing: 6) {
+            AvatarBadge(user: session.currentUser, size: 38)
 
-                // Present once a village has loaded (every screen shares the same
-                // VillageSession, so this fills in identically wherever you are, not just on
-                // the village map).
-                if let info = villageSession.detail?.village {
-                    resourceBadge(image: "icon_wood", info.wood)
-                    resourceBadge(image: "icon_clay", info.clay)
-                    resourceBadge(image: "icon_iron", info.iron)
-                    resourceBadge(image: "icon_crop", info.crop)
-                }
+            // Present once a village has loaded (every screen shares the same
+            // VillageSession, so this fills in identically wherever you are, not just on
+            // the village map).
+            if let info = villageSession.detail?.village {
+                resourceBadge(image: "icon_wood", info.wood)
+                resourceBadge(image: "icon_clay", info.clay)
+                resourceBadge(image: "icon_iron", info.iron)
+                resourceBadge(image: "icon_crop", info.crop)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             LinearGradient(colors: [GameTheme.panelTop, GameTheme.background], startPoint: .top, endPoint: .bottom)
                 .overlay(alignment: .bottom) {
@@ -44,15 +48,24 @@ struct GameHeaderBar: View {
 
     // Wide cut-corner plate — icon left, big bold number right, no name label — mirroring the
     // reference art the user supplied (and GameLayout.vue's matching redesign on the web this
-    // same round) instead of the old narrow icon-on-top/number-below square badge.
+    // same round). Bright amber fill (GameTheme.resourceFill, mirrors app.css's
+    // `.tv-octagon-resource`) instead of the default navy plate, which nearly disappeared
+    // against this header's own navy background — the same contrast fix applied on web.
+    // `.frame(maxWidth: .infinity)` lets the 4 badges share the row evenly instead of each
+    // sizing to its own content and overflowing.
     private func resourceBadge(image: String, _ value: Int) -> some View {
-        HStack(spacing: 6) {
-            Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 26, height: 26)
-            Text("\(value)").font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
+        HStack(spacing: 4) {
+            Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 18, height: 18)
+            Text(fmtCompact(value))
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(GameTheme.btnText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 40)
-        .gameOctagonBadge(cut: 10)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 6)
+        .frame(height: 34)
+        .gameOctagonBadge(cut: 8, fill: GameTheme.resourceFill)
     }
 }
 
