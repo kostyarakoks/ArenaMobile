@@ -33,8 +33,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.arenaofthelords.mobile
         PRODUCT_NAME: ArenaMobile
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # Bumped per an explicit request ("поменять и версии для ios") after this round's
+        # fixes — resource-badge redesign to match the web app, the construction-stuck-after-
+        # finishing bug, and the village-map zoom scaling bug. MARKETING_VERSION is the
+        # user-facing version (App Store "Version"); CURRENT_PROJECT_VERSION is the build
+        # number and must strictly increase on every submitted build, even within the same
+        # marketing version — bump it on every release, not just ones that also bump
+        # MARKETING_VERSION.
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         # No signing config here on purpose — the GitHub Actions build overrides these with
