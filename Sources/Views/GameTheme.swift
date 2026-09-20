@@ -137,3 +137,53 @@ extension ButtonStyle where Self == GamePrimaryButtonStyle {
 extension ButtonStyle where Self == GameSecondaryButtonStyle {
     static var gameSecondary: GameSecondaryButtonStyle { GameSecondaryButtonStyle() }
 }
+
+/// A rectangle with all four corners cut off at 45°, i.e. an elongated octagon — the frame
+/// shape used throughout the reference header art the user supplied (the village nameplate,
+/// the resource/currency badges): navy fill + gold border, corners sliced instead of rounded.
+/// `cut` is clamped to half the shorter side, so it degrades gracefully on very small/thin
+/// frames instead of self-intersecting.
+struct CutCornerShape: Shape {
+    var cut: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let c = min(cut, min(rect.width, rect.height) / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + c, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - c, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + c))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - c))
+        path.addLine(to: CGPoint(x: rect.maxX - c, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + c, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - c))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + c))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Navy-fill + gold-border cut-corner badge — the reusable frame for the header's nameplate and
+/// resource/currency/action slots (see CutCornerShape above). This is a native stand-in for the
+/// user's own reference art; the icons placed inside it (emoji today) are meant to be swapped
+/// for the matching bespoke PNGs later without touching this frame.
+struct GameOctagonBadgeModifier: ViewModifier {
+    var cut: CGFloat = 8
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                LinearGradient(colors: [GameTheme.panelTop, GameTheme.panelBottom], startPoint: .top, endPoint: .bottom)
+                    .clipShape(CutCornerShape(cut: cut))
+            )
+            .overlay(
+                CutCornerShape(cut: cut)
+                    .stroke(LinearGradient(colors: [GameTheme.amberLight, GameTheme.btnBottom], startPoint: .top, endPoint: .bottom), lineWidth: 1.5)
+            )
+    }
+}
+
+extension View {
+    func gameOctagonBadge(cut: CGFloat = 8) -> some View {
+        modifier(GameOctagonBadgeModifier(cut: cut))
+    }
+}
