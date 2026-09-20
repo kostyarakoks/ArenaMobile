@@ -17,9 +17,9 @@ struct MapOverlayControls: View {
     var body: some View {
         VStack(spacing: 10) {
             villageSwitcher
-            overlayLink(icon: "👤", id: "profile", label: "Профиль")
-            overlayLink(icon: "✉️", id: "messages", label: "Сообщения")
-            overlayLink(icon: "📜", id: "quests", label: "Задания")
+            overlayLink(image: "icon_gear", id: "profile", icon: "👤", label: "Профиль")
+            overlayLink(image: "icon_messages", id: "messages", icon: "✉️", label: "Сообщения")
+            overlayLink(image: "icon_quests", id: "quests", icon: "📜", label: "Задания")
         }
     }
 
@@ -38,31 +38,35 @@ struct MapOverlayControls: View {
                     }
                 }
             } label: {
-                overlayButtonLabel(icon: "🏰")
+                overlayButtonLabel(image: "icon_village")
             }
         } else if villageSession.detail?.village != nil {
             // Only one village — nothing to switch TO, same disabled-nameplate treatment the
             // web header gives this state.
-            overlayButtonLabel(icon: "🏰")
+            overlayButtonLabel(image: "icon_village")
                 .opacity(0.5)
         }
     }
 
-    private func overlayLink(icon: String, id: String, label: String) -> some View {
+    private func overlayLink(image: String, id: String, icon: String, label: String) -> some View {
         NavigationLink {
             NavDestinationView(item: NavItem(id: id, icon: icon, label: label))
         } label: {
-            overlayButtonLabel(icon: icon)
+            overlayButtonLabel(image: image)
         }
     }
 
-    private func overlayButtonLabel(icon: String) -> some View {
-        Text(icon)
-            .font(.system(size: 19))
+    // Same .tv-octagon-style plate GameHeaderBar's resource badges use (gameOctagonBadge, see
+    // GameTheme.swift) instead of the plain translucent-black circle this used to be — matches
+    // GameLayout.vue's own header/floating-rail buttons on the web, which got the identical
+    // treatment in this round (see the RESOURCE_ICONS comment there).
+    private func overlayButtonLabel(image: String) -> some View {
+        Image(image)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 24, height: 24)
             .frame(width: 44, height: 44)
-            .background(Color.black.opacity(0.55))
-            .clipShape(Circle())
-            .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+            .gameOctagonBadge(cut: 9)
             .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
     }
 }
