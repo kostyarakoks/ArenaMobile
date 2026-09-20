@@ -94,6 +94,17 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.backgroundColor = .clear
+        // Default is `.automatic`, which has UIKit silently pad the scroll view's content with
+        // extra insets derived from ITS OWN safeAreaInsets whenever it thinks part of itself
+        // overlaps the unsafe area (notch/home indicator). This view is already confined well
+        // below GameHeaderBar and above the bottom dock via SwiftUI's `.safeAreaInset` (a
+        // SwiftUI-only mechanism UIKit has no visibility into), so there's nothing for this
+        // auto-adjustment to correctly compensate for — at best it's a no-op, at worst it's an
+        // extra, invisible-from-here offset UIKit adds on its own that the old pure-SwiftUI
+        // ScrollView this replaced could never have introduced. Explicitly opting out removes
+        // that whole class of "map content quietly shifts near the header/footer" risk (see
+        // VillageMapView's/WorldMapView's own map-vs-header/footer layering notes).
+        scrollView.contentInsetAdjustmentBehavior = .never
 
         let hostedView = context.coordinator.hostingController.view!
         hostedView.backgroundColor = .clear

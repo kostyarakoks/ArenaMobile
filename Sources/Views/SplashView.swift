@@ -24,6 +24,15 @@ struct SplashView: View {
                     .tint(.white)
             }
             .padding(.horizontal, 32)
+
+            // See AppVersion.swift's own doc comment for why this shows here and in "Ещё".
+            VStack {
+                Spacer()
+                Text(AppVersion.displayString)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.bottom, 16)
+            }
         }
     }
 }

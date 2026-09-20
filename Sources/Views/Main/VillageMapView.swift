@@ -34,6 +34,14 @@ struct VillageMapView: View {
     // later instead of being fired again every single tick of the 1s poll loop.
     @State private var lastConstructionRefreshAttempt: Date = .distantPast
 
+    // Rename — "добавить возможность название деревни при достижение 2 уровня главного
+    // здания (так же сделать в iOS)". Gated by detail.village.canRename (server-checked too,
+    // see Api\VillageController::update()), so the pencil button below only appears once
+    // that's true.
+    @State private var isRenaming = false
+    @State private var renameText = ""
+    @State private var renameError: String?
+
     private static let queueDateFormatter = ISO8601DateFormatter()
 
     private var selectedVillageID: Int? { villageSession.selectedVillageID }
@@ -93,6 +101,28 @@ struct VillageMapView: View {
                     .presentationDetents([.medium, .large])
                 }
             }
+            .alert("Переименовать деревню", isPresented: $isRenaming) {
+                TextField("Название деревни", text: $renameText)
+                Button("Сохранить") { Task { await performRename() } }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                if let renameError {
+                    Text(renameError)
+                }
+            }
+    }
+
+    private func performRename() async {
+        guard let token = session.bearerToken else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let villageID = selectedVillageID else { return }
+        do {
+            try await APIClient.shared.renameVillage(id: villageID, name: trimmed, token: token)
+            villageSession.refreshSelected(session)
+        } catch {
+            session.signOutIfUnauthorized(error)
+            renameError = (error as? LocalizedError)?.errorDescription ?? "Не удалось переименовать деревню."
+        }
     }
 
     @ViewBuilder
@@ -195,6 +225,31 @@ struct VillageMapView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                             .position(x: 46, y: 16)
                     }
+
+                    // Village name + rename pencil, right below the tier badge — see
+                    // isRenaming's own doc comment.
+                    HStack(spacing: 4) {
+                        Text(detail.village.name)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .lineLimit(1)
+                        if detail.village.canRename {
+                            Button {
+                                renameText = detail.village.name
+                                renameError = nil
+                                isRenaming = true
+                            } label: {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(GameTheme.amberLight)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .position(x: 46, y: 40)
 
                     // scaleX and scaleY are mathematically equal here (ZoomableMapContainer's
                     // contentAspect keeps both axes multiplied by the very same effectiveZoom
@@ -306,14 +361,16 @@ struct VillageMapView: View {
 
 }
 
-private struct IdentifiableInt: Identifiable { let id: Int }
+// Not `private` — FieldsMapView.swift reuses both of these for its own tap-sheet/construction
+// overlay instead of duplicating them.
+struct IdentifiableInt: Identifiable { let id: Int }
 
 /// Live progress bar + countdown for one in-progress build-queue item — ticks from the real
 /// started_at/finishes_at window via TimelineView, matching ConstructionProgress.vue.
 ///
 /// `scale` mirrors plotMarker's own zoom scale, so the badge grows/shrinks together with the
 /// icon it hangs off of instead of staying a fixed size while everything around it zooms.
-private struct ConstructionBadge: View {
+struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
     var scale: CGFloat = 1
 

@@ -151,6 +151,49 @@ final class APIClient {
         return decoded
     }
 
+    private struct RenameVillageBody: Encodable { let name: String }
+
+    /// PATCH /api/villages/{village} — mirrors Api\VillageController::update(), gated
+    /// server-side on Main Building level 2 (per "добавить возможность название деревни при
+    /// достижение 2 уровня главного здания").
+    func renameVillage(id: Int, name: String, token: String) async throws {
+        var request = try makeRequest(path: "/api/villages/\(id)", method: "PATCH")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(RenameVillageBody(name: name))
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+    }
+
+    /// GET /api/villages/{village}/fields — resource-field (dorf1/"Поля") map, mirrors
+    /// Api\VillageController::fields(). See FieldsResponse's own doc comment for why this is
+    /// one call, unlike the building slot's separate catalogue fetch.
+    func fetchFields(villageID: Int, token: String) async throws -> FieldsResponse {
+        var request = try makeRequest(path: "/api/villages/\(villageID)/fields", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(FieldsResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return decoded
+    }
+
+    private struct FieldActionBody: Encodable { let instant: Bool }
+
+    /// POST /api/villages/{village}/fields/{field}/upgrade — mirrors Api\VillageController::
+    /// fieldAction(), same instant-finish-for-💎 option performSlotAction() has for buildings.
+    func upgradeField(villageID: Int, fieldID: Int, instant: Bool, token: String) async throws {
+        var request = try makeRequest(path: "/api/villages/\(villageID)/fields/\(fieldID)/upgrade", method: "POST")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(FieldActionBody(instant: instant))
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+    }
+
     /// GET /api/villages/{village}/slots/{slot} — "what can I build/upgrade here" catalogue,
     /// same data VillageMapView's build-picker/upgrade sheet renders (mirrors
     /// UpgradeModal.vue/EmptyPlotOverlay.vue's fetch on the web).

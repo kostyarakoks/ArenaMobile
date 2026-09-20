@@ -177,6 +177,15 @@ struct MainTabView: View {
                     Button("Закрыть") { showMore = false }
                 }
             }
+            // See AppVersion.swift's own doc comment for why this shows here and on the splash
+            // screen — "добавить в приложение номер версии сборки при загрузки и при открытие
+            // «еще»".
+            .safeAreaInset(edge: .bottom) {
+                Text(AppVersion.displayString)
+                    .font(.caption2)
+                    .foregroundStyle(GameTheme.textMuted)
+                    .padding(.bottom, 8)
+            }
         }
     }
 }

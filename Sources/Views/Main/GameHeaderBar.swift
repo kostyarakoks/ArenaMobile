@@ -25,15 +25,19 @@ struct GameHeaderBar: View {
         HStack(spacing: 6) {
             AvatarBadge(user: session.currentUser, size: 38)
 
-            // Present once a village has loaded (every screen shares the same
-            // VillageSession, so this fills in identically wherever you are, not just on
-            // the village map).
-            if let info = villageSession.detail?.village {
-                resourceBadge(image: "icon_wood", info.wood)
-                resourceBadge(image: "icon_clay", info.clay)
-                resourceBadge(image: "icon_iron", info.iron)
-                resourceBadge(image: "icon_crop", info.crop)
-            }
+            // Always laid out, even before villageSession.detail has loaded — used to be gated
+            // behind `if let info = villageSession.detail?.village`, which meant the header was
+            // JUST the avatar (one 38pt circle, hugging the left edge) until the first village
+            // fetch completed, then suddenly widened to avatar+4 badges filling the row. That's
+            // the reported "место под ресурсы при загрузки должно быть выстовлено сразу" — the
+            // fix is to reserve the same 4-badge layout from the very first frame (including
+            // during SplashView's loading state) and just show 0 in each until real data
+            // arrives, instead of the row's own shape changing out from under the player.
+            let info = villageSession.detail?.village
+            resourceBadge(image: "icon_wood", info?.wood ?? 0)
+            resourceBadge(image: "icon_clay", info?.clay ?? 0)
+            resourceBadge(image: "icon_iron", info?.iron ?? 0)
+            resourceBadge(image: "icon_crop", info?.crop ?? 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

@@ -39,8 +39,11 @@ struct NavItem: Identifiable, Hashable {
         map,
     ]
 
+    // "fields" ("Поля") used to live here — moved out per "кнопку «поля» вынести из общего в
+    // карту": it's now reachable only from the map screens (MapOverlayControls' own button
+    // stack), not duplicated in "Ещё" too. NavDestinationView still has a `case "fields"` (in
+    // case anything else ever links to it by id), it's just no longer listed in this grid.
     static let moreItems: [NavItem] = [
-        NavItem(id: "fields", icon: "🌾", label: "Поля"),
         NavItem(id: "rally_point", icon: "⚔️", label: "Площадь сбора"),
         NavItem(id: "commanders", icon: "🧙", label: "Полководцы"),
         NavItem(id: "arena", icon: "🏟️", label: "Арена"),

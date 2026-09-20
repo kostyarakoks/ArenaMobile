@@ -40,9 +40,12 @@ struct VillageDetail: Codable {
         let crop: Int
         let population: Int
         let tierLabel: String?
+        // Gates the rename affordance on VillageMapView — see Api\VillageController::show()'s
+        // own comment on this field (Main Building level 2, same threshold the web app uses).
+        let canRename: Bool
 
         enum CodingKeys: String, CodingKey {
-            case id, name, x, y, wood, clay, iron, crop, population, tierLabel
+            case id, name, x, y, wood, clay, iron, crop, population, tierLabel, canRename
             case isCapital = "is_capital"
         }
     }
@@ -109,6 +112,55 @@ struct VillageDetail: Codable {
         let slot: Int
         let cx: Double
         let cy: Double
+    }
+}
+
+/// Mirrors Api\VillageController::fields()'s JSON — the resource-field (dorf1/"Поля") map, one
+/// call for all 18 tiles. Unlike a building plot, a field's TYPE is fixed at founding (only its
+/// level changes), so there's no separate "what could go here" catalogue the way SlotDetail has
+/// — this one response already has everything FieldsMapView needs. Server sends camelCase keys
+/// directly here (see Api\VillageController::fieldPayload()), so no CodingKeys mapping needed.
+struct FieldsResponse: Decodable {
+    let village: FieldsVillageInfo
+    let fields: [FieldSummary]
+    let queue: [VillageDetail.QueueEntry]
+    let queueFull: Bool
+
+    struct FieldsVillageInfo: Decodable {
+        let id: Int
+        let wood: Int
+        let clay: Int
+        let iron: Int
+        let crop: Int
+    }
+}
+
+/// One resource field tile — "Лесопилка"/"Карьер"/"Рудник"/"Поле" depending on `type`
+/// (wood/clay/iron/crop), mirrors App\Http\Controllers\Api\VillageController::fieldPayload().
+struct FieldSummary: Decodable, Identifiable {
+    let id: Int
+    let slot: Int
+    let type: String
+    let level: Int
+    let maxLevel: Int
+    let label: String
+    let nextCost: BuildResourceCost?
+    let nextTime: Int?
+    let bonusCurrent: BuildingBonusStat?
+    let bonusNext: BuildingBonusStat?
+    let instantFinishCost: Int?
+
+    /// Local icon asset already bundled for GameHeaderBar's resource badges (icon_wood/
+    /// icon_clay/icon_iron/icon_crop) — reused here instead of fetching the web app's per-type
+    /// SVG art (villageMap.js's FIELD_TYPE_GRAPHIC), which isn't bundled into the app.
+    var iconAssetName: String {
+        switch type {
+        case "wood": return "icon_wood"
+        case "clay": return "icon_clay"
+        case "iron": return "icon_iron"
+        case "crop": return "icon_crop"
+        default: return "icon_wood"
+        }
     }
 }
 

@@ -22,6 +22,8 @@ struct NavDestinationView: View {
             VillageMapView(selectItem: { selectItem?($0) })
         case "map":
             WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
+        case "fields":
+            FieldsMapView(selectItem: { selectItem?($0) })
         case "hero":
             HeroView()
         case "market":
