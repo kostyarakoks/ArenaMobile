@@ -89,7 +89,7 @@ struct VillageMapView: View {
                     villageSession.refreshSelected(session)
                 }
             }
-            .sheet(item: Binding(get: { tappedSlot.map { IdentifiableInt(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
+            .sheet(item: Binding(get: { tappedSlot.map { IdentifiableSlotID(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
                 if let detail, let villageID = selectedVillageID {
                     SlotActionSheet(
                         villageID: villageID,
@@ -362,8 +362,11 @@ struct VillageMapView: View {
 }
 
 // Not `private` — FieldsMapView.swift reuses both of these for its own tap-sheet/construction
-// overlay instead of duplicating them.
-struct IdentifiableInt: Identifiable { let id: Int }
+// overlay instead of duplicating them. Named distinctly from MessagesView.swift's own (unrelated,
+// file-private) `IdentifiableInt` wrapper to avoid a whole-module "invalid redeclaration" clash —
+// the two used to share the plain name `IdentifiableInt` until CI caught the collision once this
+// one stopped being `private` here.
+struct IdentifiableSlotID: Identifiable { let id: Int }
 
 /// Live progress bar + countdown for one in-progress build-queue item — ticks from the real
 /// started_at/finishes_at window via TimelineView, matching ConstructionProgress.vue.

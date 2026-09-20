@@ -51,7 +51,7 @@ struct FieldsMapView: View {
                     await load()
                 }
             }
-            .sheet(item: Binding(get: { tappedFieldID.map { IdentifiableInt(id: $0) } }, set: { tappedFieldID = $0?.id })) { wrapped in
+            .sheet(item: Binding(get: { tappedFieldID.map { IdentifiableSlotID(id: $0) } }, set: { tappedFieldID = $0?.id })) { wrapped in
                 if let response, let field = response.fields.first(where: { $0.id == wrapped.id }), let villageID = villageSession.selectedVillageID {
                     FieldActionSheet(
                         villageID: villageID,
