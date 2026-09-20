@@ -75,6 +75,25 @@ final class APIClient {
         return (decoded.token, decoded.user)
     }
 
+    private struct RegisterBody: Encodable { let name: String; let tribe: String; let device_name: String }
+
+    /// POST /api/register — the "instant play" flow (Api\AuthController::register): the player
+    /// only ever types a nickname and picks a tribe, never an email or password (those are
+    /// generated server-side and never surfaced back here — the bearer token this returns is
+    /// the account's one and only credential from this point on, same as login()'s).
+    func register(name: String, tribe: String, deviceName: String) async throws -> (token: String, user: GameUser) {
+        var request = try makeRequest(path: "/api/register", method: "POST")
+        request.httpBody = try JSONEncoder().encode(RegisterBody(name: name, tribe: tribe, device_name: deviceName))
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+
+        guard let decoded = try? decoder.decode(LoginResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return (decoded.token, decoded.user)
+    }
+
     func fetchMe(token: String) async throws -> GameUser {
         var request = try makeRequest(path: "/api/me", method: "GET")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

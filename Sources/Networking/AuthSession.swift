@@ -73,6 +73,26 @@ final class AuthSession: ObservableObject {
         }
     }
 
+    /// "Instant play" — tap a nickname + tribe in, no email/password ever entered (see
+    /// Api\AuthController::register). This is the primary way a NEW player gets into the game
+    /// now (WelcomeView's "Играть"); login(email:password:) above stays only for someone who
+    /// already has an account from the web app and wants to attach this device to it.
+    func register(name: String, tribe: String) async {
+        errorMessage = nil
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        do {
+            let deviceName = "ArenaMobile iOS (\(UIDeviceNameProvider.name))"
+            let (token, user) = try await APIClient.shared.register(name: name, tribe: tribe, deviceName: deviceName)
+            self.token = token
+            self.currentUser = user
+            self.phase = .signedIn
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Не удалось создать аккаунт."
+        }
+    }
+
     /// Re-fetches /api/me and updates currentUser in place — called after any action that
     /// changes something GameUser carries (e.g. joining/leaving an alliance changes
     /// allianceId) so the rest of the app sees the new value without a full re-login.
