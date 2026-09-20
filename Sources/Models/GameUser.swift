@@ -15,10 +15,26 @@ struct GameUser: Codable, Equatable {
     let isAdmin: Bool
     let allianceId: Int?
 
+    // Flattened server-computed avatar info (Api\AuthController::avatarPayload()) — mirrors
+    // PlayerAvatar.vue's own three-way fallback (uploaded image / emoji-on-colour preset /
+    // plain initial letter), precomputed server-side so this model doesn't need its own copy
+    // of config('avatars.presets') or storage-URL building logic. See GameHeaderBar's
+    // AvatarBadge for the SwiftUI counterpart of PlayerAvatar.vue.
+    let avatarKind: String // "upload" | "preset" | "initial"
+    let avatarUrl: String?
+    let avatarEmoji: String?
+    let avatarColor: String?
+    let avatarInitial: String
+
     enum CodingKeys: String, CodingKey {
         case id, name, email, tribe, locale, gold, silver
         case arenaPoints = "arena_points"
         case isAdmin = "is_admin"
         case allianceId = "alliance_id"
+        case avatarKind = "avatar_kind"
+        case avatarUrl = "avatar_url"
+        case avatarEmoji = "avatar_emoji"
+        case avatarColor = "avatar_color"
+        case avatarInitial = "avatar_initial"
     }
 }

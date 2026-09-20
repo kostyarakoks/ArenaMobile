@@ -10,6 +10,19 @@ struct ZoomableMapContainer<Content: View>: View {
     let content: () -> Content
     let minZoom: CGFloat
     let maxZoom: CGFloat
+    // Content's own natural width/height ratio (e.g. VillageLayout's viewboxWidth/viewboxHeight)
+    // — nil keeps the old behaviour of stretching content to exactly fill the container on both
+    // axes at zoom 1 (WorldMapView's flat tile grid has no "natural" aspect to preserve; any
+    // container size is equally valid for it).
+    //
+    // When given, the content is instead scaled to FIT THE CONTAINER'S HEIGHT while keeping this
+    // aspect ratio — mirroring Components/ZoomableMap.vue's own camera math (`scale = boxH /
+    // WORLD_H`, see its comment). On a portrait phone showing a village map that's wider than it
+    // is tall, fitting to height makes the rendered map WIDER than the screen even at zoom 1, so
+    // it's pannable left/right immediately — without this, content exactly matched the
+    // container's own (portrait) box on both axes with nothing left to pan to, which is what
+    // made the village map read as "cropped to the screen, doesn't scroll" (the reported bug).
+    var contentAspect: CGFloat?
 
     // Explicit init instead of relying on the synthesized memberwise one: `zoom`/`pinchDelta`
     // below are `private`, and a struct's auto-generated memberwise initializer is only as
@@ -17,10 +30,11 @@ struct ZoomableMapContainer<Content: View>: View {
     // makes the synthesized init private too, i.e. only callable from within this same file.
     // That was invisible while this type itself was private to VillageMapView.swift (its only
     // call site was already in the same file); now that WorldMapView.swift also constructs one,
-    // it needs a real init that only exposes `content`/`minZoom`/`maxZoom` as parameters.
-    init(minZoom: CGFloat = 1, maxZoom: CGFloat = 3, @ViewBuilder content: @escaping () -> Content) {
+    // it needs a real init that only exposes its non-private parameters.
+    init(minZoom: CGFloat = 1, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
+        self.contentAspect = contentAspect
         self.content = content
     }
 
@@ -29,20 +43,22 @@ struct ZoomableMapContainer<Content: View>: View {
 
     var body: some View {
         GeometryReader { outer in
-            // Fills whatever space the parent offers (the whole screen minus the nav bar and
-            // bottom dock, per "карту на весь экран") instead of aspect-locking to some fixed
-            // ratio — callers size their own content to this same real size (see VillageMapView's
-            // mapCanvas / WorldMapView's own canvas, both using a GeometryReader inside `content`
-            // to read it back), so nothing needs a hardcoded aspect ratio here.
-            let baseWidth = outer.size.width
-            let baseHeight = outer.size.height
+            let baseWidth: CGFloat
+            let baseHeight: CGFloat
+            if let contentAspect, contentAspect > 0 {
+                baseHeight = outer.size.height
+                baseWidth = baseHeight * contentAspect
+            } else {
+                baseWidth = outer.size.width
+                baseHeight = outer.size.height
+            }
             let effectiveZoom = max(minZoom, min(maxZoom, zoom * pinchDelta))
 
             ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 content()
                     .frame(width: baseWidth * effectiveZoom, height: baseHeight * effectiveZoom)
             }
-            .frame(width: baseWidth, height: baseHeight)
+            .frame(width: outer.size.width, height: outer.size.height)
             .simultaneousGesture(
                 MagnificationGesture()
                     .onChanged { value in pinchDelta = value }

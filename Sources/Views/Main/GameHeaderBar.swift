@@ -5,10 +5,12 @@ import SwiftUI
 /// GameLayout.vue's own always-present header on the web app (resources/js/Layouts/
 /// GameLayout.vue) rather than only showing on the village map like this used to.
 ///
-/// This is VillageMapView's old `topHeaderBar`, trimmed down: the village nameplate/switcher and
-/// the profile/messages/quests action icons moved OUT to float over the map screens instead (see
-/// MapOverlayControls) — those don't belong on every single screen the way the resource strip
-/// does, and leaving them here would crowd a header that's now global instead of village-only.
+/// Pared down to exactly two things per an explicit request: the player's own avatar, and the
+/// four base resources. Everything else that used to live here — silver/gold currency, the
+/// manual refresh button, and (from an earlier round) the village nameplate/switcher and
+/// profile/messages/quests action icons — now lives elsewhere (MapOverlayControls for the
+/// latter) or nowhere on this screen at all, on purpose: this header's only job now is "who am I
+/// and what do I have", the same minimal always-visible strip the reference art shows.
 struct GameHeaderBar: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -16,7 +18,7 @@ struct GameHeaderBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                emblemBadge
+                AvatarBadge(user: session.currentUser)
 
                 // Present once a village has loaded (every screen shares the same
                 // VillageSession, so this fills in identically wherever you are, not just on
@@ -26,28 +28,6 @@ struct GameHeaderBar: View {
                     resourceBadge(image: "icon_clay", info.clay)
                     resourceBadge(image: "icon_iron", info.iron)
                     resourceBadge(image: "icon_crop", info.crop)
-                }
-
-                if let user = session.currentUser {
-                    // No bespoke silver-coin art was supplied alongside the other 9 icons —
-                    // keeps the 🪙 emoji fallback until one is.
-                    resourceBadge("🪙", user.silver)
-                    resourceBadge(image: "icon_gem", user.gold)
-                }
-
-                Spacer(minLength: 4)
-
-                // Refreshes whichever village is currently active — the map no longer sits in
-                // a ScrollView on the screens that show it, so pull-to-refresh has nothing to
-                // attach to; this is the replacement, same as before.
-                Button {
-                    villageSession.refreshSelected(session)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(GameTheme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .gameOctagonBadge(cut: 8)
                 }
             }
             .padding(.horizontal, 10)
@@ -62,39 +42,70 @@ struct GameHeaderBar: View {
         )
     }
 
-    private var emblemBadge: some View {
-        ZStack {
-            Circle().fill(LinearGradient(colors: [GameTheme.panelTop, GameTheme.panelBottom], startPoint: .top, endPoint: .bottom))
-            Circle()
-                .stroke(LinearGradient(colors: [GameTheme.amberLight, GameTheme.btnBottom], startPoint: .top, endPoint: .bottom), lineWidth: 3)
-                .padding(2)
-            Circle().stroke(GameTheme.amber.opacity(0.5), lineWidth: 1).padding(6)
-            Image(systemName: "shield.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(GameTheme.textSecondary)
-        }
-        .frame(width: 44, height: 44)
-    }
-
-    private func resourceBadge(_ icon: String, _ value: Int) -> some View {
-        VStack(spacing: 1) {
-            Text(icon).font(.system(size: 15))
-            Text("\(value)").font(.system(size: 8, weight: .bold, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
-        }
-        .frame(width: 38, height: 36)
-        .gameOctagonBadge(cut: 9)
-    }
-
-    // Same slot as the emoji overload above, painted icon art instead (see
-    // Assets.xcassets/GameAssets/UI — the same 9 PNGs GameLayout.vue's RESOURCE_ICONS uses on
-    // the web, sliced from the same reference sprite sheet).
+    // Wide cut-corner plate — icon left, big bold number right, no name label — mirroring the
+    // reference art the user supplied (and GameLayout.vue's matching redesign on the web this
+    // same round) instead of the old narrow icon-on-top/number-below square badge.
     private func resourceBadge(image: String, _ value: Int) -> some View {
-        VStack(spacing: 1) {
-            Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 18, height: 18)
-            Text("\(value)").font(.system(size: 8, weight: .bold, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
+        HStack(spacing: 6) {
+            Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 26, height: 26)
+            Text("\(value)").font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
         }
-        .frame(width: 38, height: 36)
-        .gameOctagonBadge(cut: 9)
+        .padding(.horizontal, 10)
+        .frame(height: 40)
+        .gameOctagonBadge(cut: 10)
+    }
+}
+
+/// Native counterpart of PlayerAvatar.vue's three-way fallback (uploaded image / emoji-on-colour
+/// preset / plain initial letter) — reads the flattened avatar_kind/avatar_url/avatar_emoji/
+/// avatar_color/avatar_initial fields Api\AuthController::avatarPayload() now sends, so this
+/// view never needs its own copy of config('avatars.presets') or storage-URL building logic.
+struct AvatarBadge: View {
+    let user: GameUser?
+    var size: CGFloat = 44
+
+    var body: some View {
+        ZStack {
+            switch user?.avatarKind {
+            case "upload":
+                if let urlString = user?.avatarUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            initialFace
+                        }
+                    }
+                } else {
+                    initialFace
+                }
+            case "preset":
+                ZStack {
+                    Circle().fill(Color(hex: user?.avatarColor ?? ""))
+                    Text(user?.avatarEmoji ?? "?").font(.system(size: size * 0.46))
+                }
+            default:
+                initialFace
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(
+            Circle().stroke(
+                LinearGradient(colors: [GameTheme.amberLight, GameTheme.btnBottom], startPoint: .top, endPoint: .bottom),
+                lineWidth: 3
+            )
+        )
+        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+    }
+
+    private var initialFace: some View {
+        ZStack {
+            GameTheme.panelBottom
+            Text(user?.avatarInitial ?? "?")
+                .font(.system(size: size * 0.44, weight: .bold))
+                .foregroundStyle(.white)
+        }
     }
 }
 

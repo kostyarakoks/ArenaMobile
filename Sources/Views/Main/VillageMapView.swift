@@ -116,7 +116,12 @@ struct VillageMapView: View {
             acc[item.slot] = item
         }
 
-        return ZoomableMapContainer {
+        // contentAspect: fits the map to the container's HEIGHT and derives width from the
+        // village layout's own viewbox ratio (same as ZoomableMap.vue's WORLD_W/WORLD_H camera)
+        // instead of stretching to exactly fill the portrait screen on both axes — that stretch
+        // was why the map read as "cropped to the screen, doesn't scroll left/right" (there was
+        // nothing wider than the screen TO scroll to). See ZoomableMapContainer's own doc comment.
+        return ZoomableMapContainer(contentAspect: CGFloat(width / height)) {
             // One GeometryReader for the whole canvas — its `geo.size` is the actual rendered
             // pixel size (which changes with pinch-zoom), so both the glow and the marker
             // positions scale off the SAME real size instead of the raw viewbox numbers.

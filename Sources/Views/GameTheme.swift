@@ -187,3 +187,24 @@ extension View {
         modifier(GameOctagonBadgeModifier(cut: cut))
     }
 }
+
+/// Parses a "#rrggbb" (or "#rgb") hex string — the format Api\AuthController::avatarPayload()
+/// sends preset avatar colors in (see config/avatars.php). Falls back to GameTheme.panelTop on
+/// anything malformed, so a bad/future color string never crashes the header, just looks a
+/// little duller.
+extension Color {
+    init(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("#") { s.removeFirst() }
+        if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+        guard s.count == 6, let value = UInt32(s, radix: 16) else {
+            self = GameTheme.panelTop
+            return
+        }
+        self = Color(
+            red: Double((value >> 16) & 0xFF) / 255.0,
+            green: Double((value >> 8) & 0xFF) / 255.0,
+            blue: Double(value & 0xFF) / 255.0
+        )
+    }
+}
