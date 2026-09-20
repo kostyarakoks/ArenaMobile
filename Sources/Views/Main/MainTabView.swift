@@ -53,7 +53,7 @@ struct MainTabView: View {
         // Global resources header — see GameHeaderBar's own doc comment for why this moved here
         // from being VillageMapView's own private header.
         .safeAreaInset(edge: .top, spacing: 0) {
-            GameHeaderBar()
+            GameHeaderBar(selectItem: { selected = $0 })
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomDock

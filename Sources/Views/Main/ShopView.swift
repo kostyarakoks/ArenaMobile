@@ -111,7 +111,14 @@ struct ShopView: View {
         defer { isBusy = false }
         do {
             try await APIClient.shared.buyCrystals(packageID: packageID, token: token)
+            // "при покупке кристаллов не сразу появляются на карте" — `load()` only refetches
+            // THIS screen's own local `detail`; MapOverlayControls'/GameHeaderBar's crystal badge
+            // reads `session.currentUser?.gold` (AuthSession), which `load()` never touches, so
+            // it stayed stale until the next full session reload. refreshCurrentUser() is the
+            // method AuthSession already documents for exactly this ("called after any action
+            // that changes something GameUser carries") — it just wasn't being called from here.
             await load()
+            await session.refreshCurrentUser()
         } catch {
             session.signOutIfUnauthorized(error)
             errorMessage = (error as? LocalizedError)?.errorDescription
@@ -124,7 +131,9 @@ struct ShopView: View {
         defer { isBusy = false }
         do {
             try await APIClient.shared.unlockPlusQueue(token: token)
+            // Also spends crystals — same staleness fix as buy(packageID:) above.
             await load()
+            await session.refreshCurrentUser()
         } catch {
             session.signOutIfUnauthorized(error)
             errorMessage = (error as? LocalizedError)?.errorDescription
@@ -137,7 +146,9 @@ struct ShopView: View {
         defer { isBusy = false }
         do {
             try await APIClient.shared.unlockPlusQueueTemporary(token: token)
+            // Also spends crystals — same staleness fix as buy(packageID:) above.
             await load()
+            await session.refreshCurrentUser()
         } catch {
             session.signOutIfUnauthorized(error)
             errorMessage = (error as? LocalizedError)?.errorDescription
@@ -150,7 +161,9 @@ struct ShopView: View {
         defer { isBusy = false }
         do {
             try await APIClient.shared.purchaseShopItem(id: id, token: token)
+            // Also spends crystals — same staleness fix as buy(packageID:) above.
             await load()
+            await session.refreshCurrentUser()
         } catch {
             session.signOutIfUnauthorized(error)
             errorMessage = (error as? LocalizedError)?.errorDescription

@@ -4,5 +4,15 @@
 <dict>
 	<key>com.apple.developer.game-center</key>
 	<true/>
+	<!-- "добавить пуш" — real APNs push (see PushNotificationManager.swift / Api\DeviceTokenController).
+	     "development" here matches a debug/local Sideloadly-style signing profile; switch to
+	     "production" for an App Store/TestFlight/ad-hoc release build (see config/apns.php's
+	     `production` flag on the server side, which must be flipped to match). Same caveat as
+	     Game Center above: this key alone doesn't grant the capability — whichever provisioning
+	     profile actually signs the build must also have Push Notifications enabled for this to
+	     do anything, and the unsigned CI build (CODE_SIGNING_ALLOWED: "NO" in project.yml)
+	     ignores this file entirely. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

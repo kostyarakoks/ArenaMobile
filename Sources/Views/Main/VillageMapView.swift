@@ -178,17 +178,37 @@ struct VillageMapView: View {
         let buildingsBySlot: [Int: VillageDetail.BuildingSlot] = detail.buildings.reduce(into: [:]) { acc, b in acc[b.slot] = b }
         // First (earliest started_at) queue entry per slot — later chained entries for the same
         // slot are still waiting behind it, so only this one is "in progress" right now.
-        let queueBySlot: [Int: VillageDetail.QueueEntry] = detail.queue.reduce(into: [:]) { acc, item in
-            if let existing = acc[item.slot], existing.startedAt <= item.startedAt { return }
-            acc[item.slot] = item
-        }
+        //
+        // MUST filter to queueType == "building" first: village_buildings.slot and
+        // village_fields.slot both use the same 1-N numeric range (independent tables — see
+        // VillageController::queueProps()'s own `queue_type` field), so a resource-field upgrade
+        // and a building upgrade can be queued at the same time (with Plus's 2-slot queue) and
+        // land on the SAME slot number. Without this filter a field's queue entry could win the
+        // dictionary slot over a same-numbered building's own entry (or vice versa), which read
+        // as "здание не меняется на строящееся" — the building plot just silently never got its
+        // ConstructionBadge because the field's entry occupied that slot key instead.
+        let queueBySlot: [Int: VillageDetail.QueueEntry] = detail.queue
+            .filter { $0.queueType == "building" }
+            .reduce(into: [:]) { acc, item in
+                if let existing = acc[item.slot], existing.startedAt <= item.startedAt { return }
+                acc[item.slot] = item
+            }
 
         // contentAspect: fits the map to the container's HEIGHT and derives width from the
         // village layout's own viewbox ratio (same as ZoomableMap.vue's WORLD_W/WORLD_H camera)
         // instead of stretching to exactly fill the portrait screen on both axes — that stretch
         // was why the map read as "cropped to the screen, doesn't scroll left/right" (there was
         // nothing wider than the screen TO scroll to). See ZoomableMapContainer's own doc comment.
-        return ZoomableMapContainer(contentAspect: CGFloat(width / height)) {
+        //
+        // "карта при открытии должна ... выравнивать главное здание по центру" — look up the
+        // main building's own slot from the buildings payload (falls back to the classic layout's
+        // hardcoded slot 8, same fallback VillageLayout itself is for coordsBySlot) and convert
+        // its (cx, cy) into a 0...1 fraction of the viewbox for ZoomableMapContainer to center on.
+        let mainBuildingSlot = detail.buildings.first(where: { $0.buildingKey == "main_building" })?.slot ?? 8
+        let initialCenterFraction: CGPoint? = coordsBySlot[mainBuildingSlot].map {
+            CGPoint(x: $0.cx / width, y: $0.cy / height)
+        }
+        return ZoomableMapContainer(contentAspect: CGFloat(width / height), initialCenterFraction: initialCenterFraction) {
             // One GeometryReader for the whole canvas — its `geo.size` is the actual rendered
             // pixel size (which changes with pinch-zoom), so both the glow and the marker
             // positions scale off the SAME real size instead of the raw viewbox numbers.

@@ -33,7 +33,6 @@ struct MapOverlayControls: View {
     var body: some View {
         VStack(spacing: 10) {
             villageSwitcher
-            crystalBadge
             // "кнопку «поля» вынести из общего в карту, таже добавить сами поля" — used to sit
             // only in the "Ещё" sheet (NavItem.moreItems) as a dead PlaceholderScreen; moved
             // out of there entirely (see NavItem.swift) and into this map-screen button stack
@@ -45,29 +44,9 @@ struct MapOverlayControls: View {
         }
     }
 
-    // "вывести кол-во кристаллов на карте" — crystals are User.gold (see GameUser.swift's own
-    // CodingKeys comment for the historical gold/crystal naming), removed from GameHeaderBar in
-    // an earlier round ("nowhere on this screen at all, on purpose") since that header is global
-    // and this stack is map-screens-only, which is exactly what "на карте" asks for. Tapping it
-    // jumps to the Shop, the one place crystals are actually spent/bought — same as tapping the
-    // resource plates does nowhere yet, but this is the natural destination for this one.
-    private var crystalBadge: some View {
-        Button {
-            selectItem(NavItem(id: "shop", icon: "💎", label: "Магазин"))
-        } label: {
-            VStack(spacing: 1) {
-                Image("icon_gem").resizable().aspectRatio(contentMode: .fit).frame(width: 16, height: 16)
-                Text(fmtCompact(session.currentUser?.gold ?? 0))
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .frame(width: 44, height: 44)
-            .gameOctagonBadge(cut: 9)
-            .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
-        }
-    }
+    // "кристаллы разместить под хедером с правой стороны" — moved out of this floating
+    // map-only stack (crystals used to be invisible on every screen except the two maps) into
+    // GameHeaderBar's own second row, visible everywhere. See GameHeaderBar.swift's crystalPill.
 
     @ViewBuilder
     private var villageSwitcher: some View {

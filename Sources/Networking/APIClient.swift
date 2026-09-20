@@ -165,6 +165,31 @@ final class APIClient {
         try Self.checkStatus(response, data: data, decoder: decoder)
     }
 
+    private struct DeviceTokenBody: Encodable { let token: String }
+
+    /// POST /api/device-tokens — mirrors Api\DeviceTokenController::store(). Called by
+    /// PushNotificationManager once it has BOTH a real APNs token (from
+    /// AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken) and a signed-in bearer
+    /// token, in whichever order those two happen to arrive.
+    func registerDeviceToken(_ deviceToken: String, token: String) async throws {
+        var request = try makeRequest(path: "/api/device-tokens", method: "POST")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(DeviceTokenBody(token: deviceToken))
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+    }
+
+    /// DELETE /api/device-tokens — called from AuthSession.logout() so a signed-out device
+    /// stops receiving pushes meant for the account it just left (best-effort, same as
+    /// logout() below — a failure here must never block the actual sign-out).
+    func unregisterDeviceToken(_ deviceToken: String, token: String) async {
+        guard var request = try? makeRequest(path: "/api/device-tokens", method: "DELETE") else { return }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONEncoder().encode(DeviceTokenBody(token: deviceToken))
+        _ = try? await perform(request)
+    }
+
     /// GET /api/villages/{village}/fields — resource-field (dorf1/"Поля") map, mirrors
     /// Api\VillageController::fields(). See FieldsResponse's own doc comment for why this is
     /// one call, unlike the building slot's separate catalogue fetch.

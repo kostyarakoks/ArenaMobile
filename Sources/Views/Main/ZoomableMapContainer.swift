@@ -37,10 +37,17 @@ struct ZoomableMapContainer<Content: View>: View {
     // made the village map read as "cropped to the screen, doesn't scroll" (the reported bug).
     var contentAspect: CGFloat?
 
-    init(minZoom: CGFloat = 1, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, @ViewBuilder content: @escaping () -> Content) {
+    // "карта при открытии должна быть не верхнем правом углу, а выравнивать главное здание по
+    // центру" — fraction (0...1, 0...1) of the content's own width/height to center the initial
+    // viewport on, instead of UIScrollView's default (0, 0) top-left contentOffset. nil keeps the
+    // old top-left-origin behaviour (WorldMapView doesn't have a single "main" point to center on).
+    var initialCenterFraction: CGPoint?
+
+    init(minZoom: CGFloat = 1, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
         self.contentAspect = contentAspect
+        self.initialCenterFraction = initialCenterFraction
         self.content = content
     }
 
@@ -65,7 +72,7 @@ struct ZoomableMapContainer<Content: View>: View {
             // `base` is the content's size AT ZOOM 1 — UIScrollView's own zoomScale (minZoom...
             // maxZoom) handles everything beyond that natively; unlike the old code, nothing here
             // multiplies this by a live zoom value.
-            PinchZoomScrollView(minZoom: minZoom, maxZoom: maxZoom, contentSize: CGSize(width: base.width, height: base.height), content: content)
+            PinchZoomScrollView(minZoom: minZoom, maxZoom: maxZoom, contentSize: CGSize(width: base.width, height: base.height), initialCenterFraction: initialCenterFraction, content: content)
                 .frame(width: outer.size.width, height: outer.size.height)
         }
     }
@@ -78,6 +85,7 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
     let minZoom: CGFloat
     let maxZoom: CGFloat
     let contentSize: CGSize
+    let initialCenterFraction: CGPoint?
     let content: () -> Content
 
     func makeCoordinator() -> Coordinator {
@@ -142,6 +150,26 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             context.coordinator.widthConstraint?.constant = contentSize.width
             context.coordinator.heightConstraint?.constant = contentSize.height
         }
+
+        // Runs on every SwiftUI render pass (the map's own queue timers tick every second), but
+        // `didSetInitialOffset` makes it a true one-shot: the FIRST pass where the scroll view
+        // actually has real, laid-out bounds (before that, bounds/contentSize can still be .zero,
+        // and setting contentOffset against a zero-size scroll view is silently discarded by
+        // UIKit) centers on `initialCenterFraction`; every pass after that leaves the player's own
+        // pan/zoom alone. Reads `scrollView.contentSize`/`bounds` (UIKit's own live numbers) rather
+        // than recomputing from `contentSize`/`minZoom` by hand, so this stays correct regardless
+        // of exactly how UIScrollView's zoom machinery scales contentSize internally.
+        if !context.coordinator.didSetInitialOffset,
+           let fraction = initialCenterFraction,
+           scrollView.bounds.width > 0, scrollView.bounds.height > 0,
+           scrollView.contentSize.width > 0, scrollView.contentSize.height > 0 {
+            context.coordinator.didSetInitialOffset = true
+            scrollView.contentOffset = Coordinator.clampedOffset(
+                target: CGPoint(x: fraction.x * scrollView.contentSize.width - scrollView.bounds.width / 2,
+                                 y: fraction.y * scrollView.contentSize.height - scrollView.bounds.height / 2),
+                scrollView: scrollView
+            )
+        }
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
@@ -149,6 +177,7 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         var widthConstraint: NSLayoutConstraint?
         var heightConstraint: NSLayoutConstraint?
         var lastContentSize: CGSize = .zero
+        var didSetInitialOffset = false
 
         init(rootView: Content) {
             hostingController = UIHostingController(rootView: rootView)
@@ -158,6 +187,31 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             hostingController.view
+        }
+
+        // "карта и все отрывающиеся окна должны быть экран - хедер - нижний бар, сейчас карта
+        // заходит под бар и хедер на максимальном уменьшение" — without this delegate callback,
+        // nothing ever re-clamps `contentOffset` after a pinch-out-past-minimum gesture releases
+        // (bouncesZoom = true lets the gesture overshoot before UIKit springs it back), so a
+        // leftover offset from that bounce could park the visible viewport somewhere that isn't
+        // (0,0)-anchored — e.g. with the top-left corner (where the village name/tier badge live,
+        // see mapCanvas's own `.position(x: 46, y: ...)`) scrolled out from under the header. At
+        // minimum zoom the content is exactly the scroll view's own bounds size (baseSize ==
+        // outer.size, see ZoomableMapContainer.baseSize), so there is nowhere valid to pan to at
+        // all — pin the offset to (0, 0) whenever zoomScale returns to minimumZoomScale, and
+        // otherwise keep offset within the always-valid [0, contentSize - bounds] range.
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            if scrollView.zoomScale <= scrollView.minimumZoomScale {
+                scrollView.contentOffset = .zero
+                return
+            }
+            scrollView.contentOffset = Coordinator.clampedOffset(target: scrollView.contentOffset, scrollView: scrollView)
+        }
+
+        static func clampedOffset(target: CGPoint, scrollView: UIScrollView) -> CGPoint {
+            let maxX = max(0, scrollView.contentSize.width - scrollView.bounds.width)
+            let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+            return CGPoint(x: min(max(0, target.x), maxX), y: min(max(0, target.y), maxY))
         }
     }
 }

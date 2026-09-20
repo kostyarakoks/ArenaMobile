@@ -19,6 +19,14 @@ final class AuthSession: ObservableObject {
 
     private static let tokenKeychainKey = "auth.token"
 
+    init() {
+        // Lets PushNotificationManager read whichever bearer token is CURRENTLY signed in
+        // whenever a device token arrives from Apple (in no guaranteed order relative to
+        // sign-in) — see PushNotificationManager's own doc comment for why this is a provider
+        // closure rather than that manager observing AuthSession directly.
+        PushNotificationManager.shared.bearerTokenProvider = { [weak self] in self?.token }
+    }
+
     private var token: String? {
         didSet {
             if let token {
@@ -48,6 +56,7 @@ final class AuthSession: ObservableObject {
             token = savedToken
             currentUser = user
             phase = .signedIn
+            requestPushRegistration()
         } catch {
             // Stored token is stale/invalid/server unreachable — fall back to the login screen
             // rather than getting stuck on the splash screen forever.
@@ -68,6 +77,7 @@ final class AuthSession: ObservableObject {
             self.token = token
             self.currentUser = user
             self.phase = .signedIn
+            requestPushRegistration()
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Не удалось войти."
         }
@@ -91,6 +101,7 @@ final class AuthSession: ObservableObject {
             self.token = token
             self.currentUser = user
             self.phase = .signedIn
+            requestPushRegistration()
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Не удалось создать аккаунт."
         }
@@ -118,12 +129,30 @@ final class AuthSession: ObservableObject {
 
     func logout() {
         let tokenToRevoke = token
+        let deviceTokenToUnregister = PushNotificationManager.shared.pendingDeviceTokenHex
         token = nil
         currentUser = nil
         phase = .signedOut
         if let tokenToRevoke {
             Task { await APIClient.shared.logout(token: tokenToRevoke) }
+            // "добавить пуш" — a device that just signed out shouldn't keep getting pushes
+            // meant for the account it left (e.g. someone else logging into a shared/reset
+            // device next). Best-effort, same as the logout() call right above.
+            if let deviceTokenToUnregister {
+                Task { await APIClient.shared.unregisterDeviceToken(deviceTokenToUnregister, token: tokenToRevoke) }
+            }
         }
+    }
+
+    /// Asks for notification permission (first launch only shows Apple's own system prompt;
+    /// every call after that is a cheap no-op if already asked) and, once we have both a real
+    /// APNs device token and this bearer token, tells the server about the pairing. Called
+    /// right after phase becomes .signedIn from restoreSession()/login()/register() — not
+    /// earlier, so the permission prompt never appears over the splash/login screen before
+    /// there's even an account to attach a device token to.
+    private func requestPushRegistration() {
+        PushNotificationManager.shared.requestAuthorization()
+        PushNotificationManager.shared.registerWithServerIfPossible()
     }
 }
 

@@ -97,10 +97,15 @@ struct FieldsMapView: View {
         let width = FieldLayout.viewboxWidth
         let height = FieldLayout.viewboxHeight
         let fieldsBySlot: [Int: FieldSummary] = response.fields.reduce(into: [:]) { acc, f in acc[f.slot] = f }
-        let queueBySlot: [Int: VillageDetail.QueueEntry] = response.queue.reduce(into: [:]) { acc, item in
-            if let existing = acc[item.slot], existing.startedAt <= item.startedAt { return }
-            acc[item.slot] = item
-        }
+        // Mirrors VillageMapView's own fix — village_fields.slot and village_buildings.slot share
+        // the same numeric range, so this map must only look at "field" queue entries or it can
+        // pick up a same-numbered BUILDING's queue entry instead of this field's own.
+        let queueBySlot: [Int: VillageDetail.QueueEntry] = response.queue
+            .filter { $0.queueType == "field" }
+            .reduce(into: [:]) { acc, item in
+                if let existing = acc[item.slot], existing.startedAt <= item.startedAt { return }
+                acc[item.slot] = item
+            }
 
         return ZoomableMapContainer(contentAspect: CGFloat(width / height)) {
             GeometryReader { geo in
