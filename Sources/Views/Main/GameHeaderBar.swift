@@ -46,11 +46,15 @@ struct GameHeaderBar: View {
         )
     }
 
-    // Wide cut-corner plate — icon left, big bold number right, no name label — mirroring the
-    // reference art the user supplied (and GameLayout.vue's matching redesign on the web this
-    // same round). Bright amber fill (GameTheme.resourceFill, mirrors app.css's
-    // `.tv-octagon-resource`) instead of the default navy plate, which nearly disappeared
-    // against this header's own navy background — the same contrast fix applied on web.
+    // Wide plate — icon left, big bold number right, no name label — mirroring the reference art
+    // the user supplied (and GameLayout.vue's matching redesign on the web this same round).
+    // Real navy `bg_res` art (Assets.xcassets/GameAssets/UI/bg_res.imageset) instead of the
+    // flat-drawn CutCornerShape/GameOctagonBadgeModifier every other badge in this header still
+    // uses: that shape's plain navy fill nearly disappeared into this header's own navy
+    // background, which is why the resource row went bright amber for a round — this bespoke art
+    // has its own baked-in gold border + bevel shading, so navy reads clearly again without the
+    // loud recolor (same fix applied on web — see app.css's `.resource-plate`). White text
+    // instead of the amber-plate ink colour, to match.
     // `.frame(maxWidth: .infinity)` lets the 4 badges share the row evenly instead of each
     // sizing to its own content and overflowing.
     private func resourceBadge(image: String, _ value: Int) -> some View {
@@ -58,14 +62,14 @@ struct GameHeaderBar: View {
             Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 18, height: 18)
             Text(fmtCompact(value))
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(GameTheme.btnText)
+                .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 6)
         .frame(height: 34)
-        .gameOctagonBadge(cut: 8, fill: GameTheme.resourceFill)
+        .background(Image("bg_res").resizable(resizingMode: .stretch))
     }
 }
 

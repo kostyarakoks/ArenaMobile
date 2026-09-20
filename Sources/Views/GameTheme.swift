@@ -163,15 +163,15 @@ struct CutCornerShape: Shape {
 }
 
 /// Navy-fill + gold-border cut-corner badge — the reusable frame for the header's nameplate and
-/// resource/currency/action slots (see CutCornerShape above). This is a native stand-in for the
-/// user's own reference art; the icons placed inside it (emoji today) are meant to be swapped
-/// for the matching bespoke PNGs later without touching this frame.
+/// currency/action slots (see CutCornerShape above). This is a native stand-in for the user's
+/// own reference art; the icons placed inside it (emoji today) are meant to be swapped for the
+/// matching bespoke PNGs later without touching this frame.
 ///
-/// `fill` defaults to the navy panel gradient but can be overridden — added so the resource row
-/// can use `.resourceFill` (bright amber, matching web's new `.tv-octagon-resource`) instead.
-/// The navy fill all but disappeared into GameHeaderBar's own navy background (same problem the
-/// web header had — "на веб версии нет подложки"), so the resource badges need the louder fill
-/// while everything else keeps the original navy plate.
+/// The resource badges (wood/clay/iron/crop) no longer use this modifier — they draw a real
+/// `bg_res` image background instead (see GameHeaderBar.resourceBadge) once that navy-plate-
+/// disappearing-into-the-navy-header problem ("на веб версии нет подложки") was solved with
+/// bespoke art carrying its own baked-in gold border, rather than the louder flat amber fill
+/// this modifier used to take via a `fill:` override.
 struct GameOctagonBadgeModifier: ViewModifier {
     var cut: CGFloat = 8
     var fill: [Color] = [GameTheme.panelTop, GameTheme.panelBottom]
@@ -187,15 +187,6 @@ struct GameOctagonBadgeModifier: ViewModifier {
                     .stroke(LinearGradient(colors: [GameTheme.amberLight, GameTheme.btnBottom], startPoint: .top, endPoint: .bottom), lineWidth: 1.5)
             )
     }
-}
-
-extension GameTheme {
-    /// Bright amber fill for resource badges — mirrors app.css's `.tv-octagon-resource`
-    /// (`#fbbf5a → #d97706`), used instead of the navy panel gradient wherever a badge sits on
-    /// top of an already-navy background and needs real contrast.
-    static let resourceFillTop = Color(red: 0xfb / 255.0, green: 0xbf / 255.0, blue: 0x5a / 255.0)
-    static let resourceFillBottom = Color(red: 0xd9 / 255.0, green: 0x77 / 255.0, blue: 0x06 / 255.0)
-    static let resourceFill: [Color] = [resourceFillTop, resourceFillBottom]
 }
 
 extension View {

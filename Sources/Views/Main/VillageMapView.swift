@@ -24,6 +24,12 @@ struct VillageMapView: View {
     @EnvironmentObject private var villageSession: VillageSession
 
     @State private var tappedSlot: Int?
+    // Throttles the construction-finished poll below — set to the moment a refresh was last
+    // actually fired, not merely checked, so a slow/failed request gets retried a few seconds
+    // later instead of being fired again every single tick of the 1s poll loop.
+    @State private var lastConstructionRefreshAttempt: Date = .distantPast
+
+    private static let queueDateFormatter = ISO8601DateFormatter()
 
     private var selectedVillageID: Int? { villageSession.selectedVillageID }
     private var detail: VillageDetail? { villageSession.detail }
@@ -43,6 +49,32 @@ struct VillageMapView: View {
             }
             .task {
                 await villageSession.loadIfNeeded(session)
+            }
+            // A finished build used to just sit there showing the construction badge forever:
+            // `plotMarker` decides "under construction" purely from whether `detail.queue` still
+            // contains an entry for that slot (see its own doc comment), and nothing ever told
+            // the app to re-fetch `detail.queue` once a countdown reached zero — ConstructionBadge
+            // is a pure renderer with no callback, and VillageSession.loadIfNeeded only fetches
+            // once per signed-in session. This background poll is the missing piece: once a
+            // second, check whether any queue entry's finishesAt has passed, and if so re-fetch
+            // the village (the server will have already dropped/advanced that entry) — same
+            // villageSession.refreshSelected(session) call SlotActionSheet's onChanged already
+            // uses after a NEW build/upgrade action, just now also firing for one COMPLETING.
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard let queue = villageSession.detail?.queue, !queue.isEmpty else { continue }
+                    let hasFinished = queue.contains { entry in
+                        guard let finishes = Self.queueDateFormatter.date(from: entry.finishesAt) else { return false }
+                        return finishes <= .now
+                    }
+                    // Re-checked every tick but only actually fires every few seconds — avoids
+                    // hammering the server every second while waiting for a slow response, while
+                    // still retrying if the first attempt was lost to a transient network error.
+                    guard hasFinished, Date.now.timeIntervalSince(lastConstructionRefreshAttempt) > 3 else { continue }
+                    lastConstructionRefreshAttempt = .now
+                    villageSession.refreshSelected(session)
+                }
             }
             .sheet(item: Binding(get: { tappedSlot.map { IdentifiableInt(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
                 if let detail, let villageID = selectedVillageID {
@@ -159,9 +191,15 @@ struct VillageMapView: View {
                             .position(x: 46, y: 16)
                     }
 
+                    // scaleX and scaleY are mathematically equal here (ZoomableMapContainer's
+                    // contentAspect keeps both axes multiplied by the very same effectiveZoom
+                    // factor — see its own doc comment), so either would do; min() is just a
+                    // defensive guard against the two drifting apart from float rounding, so a
+                    // marker's own art never gets stretched non-uniformly.
+                    let markerScale = min(scaleX, scaleY)
                     ForEach(coordsBySlot.keys.sorted(), id: \.self) { slot in
                         if let coord = coordsBySlot[slot] {
-                            plotMarker(slot: slot, building: buildingsBySlot[slot], queueEntry: queueBySlot[slot])
+                            plotMarker(slot: slot, building: buildingsBySlot[slot], queueEntry: queueBySlot[slot], scale: markerScale)
                                 .position(x: coord.cx * scaleX, y: coord.cy * scaleY)
                         }
                     }
@@ -199,10 +237,17 @@ struct VillageMapView: View {
     // (slot 8) renders larger, matching Buildings.vue's own bigger-slot-8 treatment; a plot
     // with a live queue entry shows a construction badge (hammer + progress bar + countdown)
     // instead of its level number.
-    private func plotMarker(slot: Int, building: VillageDetail.BuildingSlot?, queueEntry: VillageDetail.QueueEntry?) -> some View {
+    //
+    // `scale` is mapCanvas's markerScale (how much bigger the map's rendered pixel size is than
+    // its base/unzoomed size right now) — every size/offset/line-width constant below is
+    // multiplied by it, mirroring how `.position(...)` already multiplies each marker's
+    // COORDINATES by scaleX/scaleY. Without this, only marker POSITIONS grew with pinch-zoom
+    // while each marker's own art stayed a fixed pixel size, so buildings visibly shrank relative
+    // to the map the more you zoomed in (reported: "здания не увеличиваются").
+    private func plotMarker(slot: Int, building: VillageDetail.BuildingSlot?, queueEntry: VillageDetail.QueueEntry?, scale: CGFloat) -> some View {
         let isBuilt = building?.buildingKey != nil
         let isDamaged = (building?.hp ?? 100) < 100
-        let iconSize: CGFloat = slot == 8 ? 58 : 34
+        let iconSize: CGFloat = (slot == 8 ? 58 : 34) * scale
 
         return Button {
             tappedSlot = slot
@@ -216,38 +261,38 @@ struct VillageMapView: View {
                 } else {
                     Circle()
                         .fill(Color.black.opacity(0.4))
-                        .frame(width: 27, height: 27)
-                        .overlay(Circle().stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                        .frame(width: 27 * scale, height: 27 * scale)
+                        .overlay(Circle().stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1 * scale, dash: [3 * scale, 2 * scale])))
                     Text("+")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * scale, weight: .bold))
                         .foregroundStyle(.white.opacity(0.75))
                 }
 
                 if let queueEntry {
-                    ConstructionBadge(entry: queueEntry)
-                        .offset(y: iconSize / 2 + 12)
+                    ConstructionBadge(entry: queueEntry, scale: scale)
+                        .offset(y: iconSize / 2 + 12 * scale)
                 } else if isBuilt, let level = building?.level {
                     Text("\(level)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * scale, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
+                        .padding(.horizontal, 4 * scale)
+                        .padding(.vertical, 1 * scale)
                         .background(Color.black.opacity(0.7))
                         .clipShape(Capsule())
-                        .offset(y: iconSize / 2 + 5)
+                        .offset(y: iconSize / 2 + 5 * scale)
                 }
 
                 if isDamaged {
                     Text("⚠️")
-                        .font(.system(size: 12))
-                        .offset(x: iconSize / 2 - 2, y: -(iconSize / 2 - 2))
+                        .font(.system(size: 12 * scale))
+                        .offset(x: iconSize / 2 - 2 * scale, y: -(iconSize / 2 - 2 * scale))
                 }
             }
-            .shadow(color: .black.opacity(0.5), radius: 2)
+            .shadow(color: .black.opacity(0.5), radius: 2 * scale)
             .overlay(
                 Circle()
-                    .stroke(Color.red.opacity(0.85), lineWidth: 2)
-                    .frame(width: iconSize + 8, height: iconSize + 8)
+                    .stroke(Color.red.opacity(0.85), lineWidth: 2 * scale)
+                    .frame(width: iconSize + 8 * scale, height: iconSize + 8 * scale)
                     .opacity(isDamaged ? 1 : 0)
             )
         }
@@ -260,8 +305,12 @@ private struct IdentifiableInt: Identifiable { let id: Int }
 
 /// Live progress bar + countdown for one in-progress build-queue item — ticks from the real
 /// started_at/finishes_at window via TimelineView, matching ConstructionProgress.vue.
+///
+/// `scale` mirrors plotMarker's own zoom scale, so the badge grows/shrinks together with the
+/// icon it hangs off of instead of staying a fixed size while everything around it zooms.
 private struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
+    var scale: CGFloat = 1
 
     private static let formatter = ISO8601DateFormatter()
 
@@ -275,16 +324,16 @@ private struct ConstructionBadge: View {
             let percent = span > 0 ? min(1, max(0, elapsed / span)) : 1
             let remaining = max(0, finishes.timeIntervalSince(context.date))
 
-            VStack(spacing: 2) {
-                Text("🔨").font(.system(size: 10))
+            VStack(spacing: 2 * scale) {
+                Text("🔨").font(.system(size: 10 * scale))
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.black.opacity(0.55)).frame(width: 30, height: 4)
+                    Capsule().fill(Color.black.opacity(0.55)).frame(width: 30 * scale, height: 4 * scale)
                     Capsule()
                         .fill(LinearGradient(colors: [Color(red: 0.63, green: 0.9, blue: 0.29), Color(red: 0.13, green: 0.77, blue: 0.37)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: 30 * percent, height: 4)
+                        .frame(width: 30 * scale * percent, height: 4 * scale)
                 }
                 Text(Self.remainingLabel(remaining))
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * scale, weight: .bold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 1)
             }
