@@ -23,10 +23,11 @@ struct NavItem: Identifiable, Hashable {
         self.label = label
     }
 
-    // The reference screenshot only supplied art for the "Карта" state of the toggle (there's
-    // no painted icon for "Деревня" — see BottomNav.vue's own comment on this), so "village"
-    // keeps its emoji fallback just like the web version does.
-    static let village = NavItem(id: "village", icon: "🏛️", label: "Деревня")
+    // Used to keep its emoji fallback here (no painted "Деревня" art existed yet — see
+    // BottomNav.vue's matching comment). The castle icon added for the header/overlay badges
+    // (icon_village — see GameHeaderBar/MapOverlayControls) fills that gap now, so the toggle's
+    // "Деревня" state gets real art too, same as "Карта" already has.
+    static let village = NavItem(id: "village", icon: "🏛️", img: "icon_village", label: "Деревня")
     static let map = NavItem(id: "map", icon: "🗺️", img: "nav_map", label: "Карта")
 
     static let mainItems: [NavItem] = [

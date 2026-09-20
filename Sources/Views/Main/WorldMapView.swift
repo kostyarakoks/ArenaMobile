@@ -63,7 +63,14 @@ struct WorldMapView: View {
         }
         .task {
             guard mapData == nil else { return }
-            await load(x: 0, y: 0)
+            // Open centred on the player's own village, not world (0|0) — mirrors the web
+            // version's "Мой город" jump, just applied automatically as the map's first paint
+            // instead of needing a manual tap (see Map/Index.vue's goToCapital). Falls back to
+            // (0|0) only if no village has loaded yet (e.g. this tab was opened before
+            // VillageSession's own initial fetch resolved).
+            await villageSession.loadIfNeeded(session)
+            let home = villageSession.selectedVillage ?? villageSession.villages.first
+            await load(x: home?.x ?? 0, y: home?.y ?? 0)
         }
     }
 

@@ -650,9 +650,31 @@ final class APIClient {
         _ = try? await perform(request)
     }
 
+    // A handful of call sites (fetchWorldMap, fetchMessages, ...) pass a "path?x=1&y=2"-style
+    // string, expecting a real query string on the request. `base.appendingPathComponent(path)`
+    // used to be given that whole string as-is — appendingPathComponent treats its argument as
+    // ONE literal path segment, so it percent-encodes the "?" and "&" right into the URL PATH
+    // (e.g. "/api/map%3Fx=0&y=0") instead of treating them as query syntax. Laravel's router
+    // then has nothing matching that literal path and 404s — exactly the reported "the route
+    // api/map%3Fx=0&y=0 could not be found". Splitting the query off first and attaching it via
+    // URLComponents (which understands "?"/"&" as query syntax, not path characters) fixes every
+    // caller that builds its path this way, not just the world map.
     private func makeRequest(path: String, method: String) throws -> URLRequest {
         guard let base = baseURL else { throw APIError.invalidServerURL }
-        var request = URLRequest(url: base.appendingPathComponent(path))
+
+        let parts = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let pathOnly = String(parts[0])
+        let queryOnly = parts.count > 1 ? String(parts[1]) : nil
+
+        guard var components = URLComponents(url: base.appendingPathComponent(pathOnly), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidServerURL
+        }
+        if let queryOnly {
+            components.percentEncodedQuery = queryOnly
+        }
+        guard let url = components.url else { throw APIError.invalidServerURL }
+
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
