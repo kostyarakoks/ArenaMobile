@@ -9,6 +9,15 @@ import SwiftUI
 /// guess. Tapping a visible village fetches its public building layout (GET
 /// /api/map/villages/{id}) — read-only "scouting" from outside, no resources/hp, mirroring the
 /// web side's own tap-to-preview panel.
+///
+/// Rewritten from a static button-grid-in-a-ScrollView (no zoom, tap-arrows to pan, a permanent
+/// coordinate-entry bar and a legend/village-list stacked below the grid) into a full-bleed,
+/// pinch-zoom + free-pan canvas — per the reference video the user supplied of another mobile
+/// strategy game's world map: a continuous painted map you pinch/drag around, with base icons
+/// sitting directly on the terrain and a minimal floating HUD (search, a "distance to home"
+/// return button, edge arrows right on the map itself) instead of a scrolling stack of controls
+/// competing with the map for vertical space. Shares ZoomableMapContainer with VillageMapView
+/// (pulled out into its own file this round) so both maps pinch/pan identically.
 struct WorldMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -25,33 +34,17 @@ struct WorldMapView: View {
 
     @State private var goToXText = "0"
     @State private var goToYText = "0"
+    @State private var showSearch = false
 
     @State private var selectedTile: WorldMapTile?
     @State private var preview: PublicVillage?
     @State private var previewLoading = false
 
-    private let tileSize: CGFloat = 26
-
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                goToBar
-
-                content
-
-                if let mapData {
-                    legend
-                    if !mapData.myVillages.isEmpty {
-                        myVillagesList(mapData.myVillages)
-                    }
-                }
-
-                if let selectedTile {
-                    detailsPanel(selectedTile)
-                }
-            }
-            .padding(.vertical, 12)
+        ZStack {
+            content
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gameScreenBackground()
         // No system nav title any more — the global resources header (GameHeaderBar, wired up
         // in MainTabView) is the only top chrome now, same "нет отдельного заголовка, просто
@@ -60,6 +53,24 @@ struct WorldMapView: View {
         .overlay(alignment: .trailing) {
             MapOverlayControls()
                 .padding(.trailing, 12)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if mapData != nil {
+                hudButton(systemImage: "magnifyingglass") { showSearch = true }
+                    .padding(.leading, 14)
+                    .padding(.bottom, 14)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let mapData {
+                homeBadge(mapData)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 14)
+            }
+        }
+        .sheet(isPresented: $showSearch) { searchSheet }
+        .sheet(item: $selectedTile) { tile in
+            detailsSheet(tile)
         }
         .task {
             guard mapData == nil else { return }
@@ -78,124 +89,87 @@ struct WorldMapView: View {
     private var content: some View {
         if isLoading && mapData == nil {
             ProgressView("Загрузка карты…")
-                .frame(maxWidth: .infinity, minHeight: 220)
+                .tint(GameTheme.amber)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let errorMessage {
             VStack(spacing: 12) {
-                Text("Не удалось загрузить карту").font(.headline)
-                Text(errorMessage).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text("Не удалось загрузить карту").font(.headline).foregroundStyle(GameTheme.textPrimary)
+                Text(errorMessage).font(.footnote).foregroundStyle(GameTheme.textMuted).multilineTextAlignment(.center)
                 Button("Повторить") {
                     Task { await load(x: mapData?.center.x ?? 0, y: mapData?.center.y ?? 0) }
                 }
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity)
-        } else if let mapData {
-            gridView(mapData)
-        }
-    }
-
-    // MARK: - Go-to bar
-
-    private var goToBar: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Text("X").font(.caption).foregroundStyle(GameTheme.textSecondary)
-                TextField("0", text: $goToXText)
-                    .keyboardType(.numbersAndPunctuation)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 60)
-                Text("Y").font(.caption).foregroundStyle(GameTheme.textSecondary)
-                TextField("0", text: $goToYText)
-                    .keyboardType(.numbersAndPunctuation)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 60)
-                Button("Перейти") {
-                    Task { await load(x: Int(goToXText) ?? 0, y: Int(goToYText) ?? 0) }
-                }
                 .buttonStyle(.gamePrimary)
-                .fixedSize()
-                Button("Центр") {
-                    Task { await load(x: 0, y: 0) }
-                }
-                .buttonStyle(.gameSecondary)
-                .fixedSize()
+                .frame(width: 160)
             }
-            if let mapData {
-                Text("Радиус обзора вокруг ваших деревень: \(mapData.visionRadius)")
-                    .font(.caption2)
-                    .foregroundStyle(GameTheme.textMuted)
-            }
+            .padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let mapData {
+            mapCanvas(mapData)
         }
-        .padding(.horizontal)
     }
 
-    // MARK: - Grid
+    // MARK: - Canvas
 
-    private func gridView(_ mapData: WorldMapResponse) -> some View {
+    // Continuous pinch-zoom + pan canvas (ZoomableMapContainer, shared with VillageMapView) —
+    // tiles are absolutely positioned inside one big GeometryReader-sized surface rather than
+    // laid out in a grid of stacked rows, so the map reads as one seamless painted area (edge to
+    // edge, no gaps) instead of a spreadsheet of boxed cells, matching the reference video.
+    private func mapCanvas(_ mapData: WorldMapResponse) -> some View {
         let width = mapData.bounds.maxX - mapData.bounds.minX + 1
-        var rows: [[WorldMapTile]] = []
-        var i = 0
-        while i < mapData.tiles.count {
-            rows.append(Array(mapData.tiles[i..<min(i + width, mapData.tiles.count)]))
-            i += width
-        }
+        let height = mapData.bounds.maxY - mapData.bounds.minY + 1
 
-        return VStack(spacing: 12) {
-            panControls(mapData)
+        return ZoomableMapContainer(minZoom: 1, maxZoom: 4) {
+            GeometryReader { geo in
+                let cellW = geo.size.width / CGFloat(width)
+                let cellH = geo.size.height / CGFloat(height)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 1) {
-                    ForEach(rows.indices, id: \.self) { r in
-                        HStack(spacing: 1) {
-                            ForEach(rows[r]) { tile in
-                                tileView(tile)
-                            }
-                        }
+                ZStack(alignment: .topLeading) {
+                    ForEach(mapData.tiles) { tile in
+                        tileView(tile, cellW: cellW, cellH: cellH)
+                            .frame(width: cellW, height: cellH)
+                            .position(
+                                x: CGFloat(tile.x - mapData.bounds.minX) * cellW + cellW / 2,
+                                y: CGFloat(mapData.bounds.maxY - tile.y) * cellH + cellH / 2
+                            )
                     }
                 }
-                .background(Color.black.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .padding(1)
             }
         }
+        .overlay(alignment: .top) { edgeArrow(systemImage: "chevron.up") { await load(x: mapData.center.x, y: mapData.center.y + mapData.gridSize) } }
+        .overlay(alignment: .bottom) { edgeArrow(systemImage: "chevron.down") { await load(x: mapData.center.x, y: mapData.center.y - mapData.gridSize) } }
+        .overlay(alignment: .leading) { edgeArrow(systemImage: "chevron.left") { await load(x: mapData.center.x - mapData.gridSize, y: mapData.center.y) } }
+        .overlay(alignment: .trailing) { edgeArrow(systemImage: "chevron.right") { await load(x: mapData.center.x + mapData.gridSize, y: mapData.center.y) } }
     }
 
-    private func panControls(_ mapData: WorldMapResponse) -> some View {
-        VStack(spacing: 4) {
-            panButton("chevron.up") { await load(x: mapData.center.x, y: mapData.center.y + mapData.gridSize) }
-            HStack {
-                panButton("chevron.left") { await load(x: mapData.center.x - mapData.gridSize, y: mapData.center.y) }
-                Spacer()
-                Text("(\(mapData.center.x)|\(mapData.center.y))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(GameTheme.textSecondary)
-                Spacer()
-                panButton("chevron.right") { await load(x: mapData.center.x + mapData.gridSize, y: mapData.center.y) }
-            }
-            panButton("chevron.down") { await load(x: mapData.center.x, y: mapData.center.y - mapData.gridSize) }
-        }
-        .padding(.horizontal, 40)
-    }
-
-    private func panButton(_ systemImage: String, action: @escaping () async -> Void) -> some View {
+    // Small floating chevron sitting right on the map's own edge — same idea as the reference
+    // video's single translucent arrow poking in from the side (not a labelled control bar
+    // underneath the map). Tapping one loads the next window in that direction, one gridSize
+    // step over, the same jump the old panControls buttons made.
+    private func edgeArrow(systemImage: String, action: @escaping () async -> Void) -> some View {
         Button {
             Task { await action() }
         } label: {
             Image(systemName: systemImage)
-                .frame(width: 32, height: 24)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Color.black.opacity(0.4))
+                .clipShape(Circle())
         }
-        .buttonStyle(.bordered)
+        .padding(6)
     }
 
-    private func tileView(_ tile: WorldMapTile) -> some View {
+    @ViewBuilder
+    private func tileView(_ tile: WorldMapTile, cellW: CGFloat, cellH: CGFloat) -> some View {
         let isSelected = selectedTile?.x == tile.x && selectedTile?.y == tile.y
         let kind = tile.foggy || tile.village != nil ? nil : WorldMapTerrain.kind(x: tile.x, y: tile.y)
+        let minCell = min(cellW, cellH)
 
-        return Button {
+        Button {
             // Tapping one of YOUR OWN villages jumps straight into it — nothing to "scout" about
             // a village you already own, so skip the details panel entirely (see
             // onOwnVillageSelected's own doc comment above). Every other tile (someone else's
-            // village, an empty plot, fog) still opens the details panel as before.
+            // village, an empty plot, fog) still opens the details sheet as before.
             if let village = tile.village, village.isMine {
                 villageSession.selectVillage(id: village.id, session)
                 onOwnVillageSelected()
@@ -206,50 +180,176 @@ struct WorldMapView: View {
         } label: {
             ZStack {
                 tileBackground(tile, kind: kind)
-                tileContent(tile, kind: kind)
+                if let village = tile.village {
+                    villageMarker(village, size: minCell)
+                } else if !tile.foggy, let kind, let icon = WorldMapTerrain.icon(for: kind) {
+                    Text(icon).font(.system(size: minCell * 0.4))
+                }
             }
-            .frame(width: tileSize, height: tileSize)
             .overlay(
-                Rectangle().stroke(isSelected ? Color.yellow : Color.black.opacity(0.15), lineWidth: isSelected ? 2 : 0.5)
+                Rectangle().stroke(isSelected ? Color.yellow : Color.clear, lineWidth: 2)
             )
         }
         .buttonStyle(.plain)
     }
 
+    // Edge-to-edge terrain fill (no per-tile border/gap) so the whole window reads as one
+    // continuous painted map instead of a grid of boxed squares — the biggest single visual gap
+    // vs the reference video the old implementation had.
     @ViewBuilder
     private func tileBackground(_ tile: WorldMapTile, kind: WorldMapTerrain.Kind?) -> some View {
         if tile.foggy {
             RadialGradient(
                 colors: [Color.white.opacity(0.12), Color(red: 0.06, green: 0.09, blue: 0.15)],
-                center: .center, startRadius: 0, endRadius: tileSize
+                center: .center, startRadius: 0, endRadius: 60
             )
-        } else if let village = tile.village {
-            (village.isMine ? Color(red: 0.56, green: 0.82, blue: 0.48)
-                : village.isAlly ? Color(red: 0.56, green: 0.79, blue: 0.93)
-                : Color(red: 0.9, green: 0.6, blue: 0.6))
+        } else if tile.village != nil {
+            WorldMapTerrain.color(for: .grass)
         } else {
             WorldMapTerrain.color(for: kind ?? .grass)
         }
     }
 
-    @ViewBuilder
-    private func tileContent(_ tile: WorldMapTile, kind: WorldMapTerrain.Kind?) -> some View {
-        if let village = tile.village {
-            Text(village.isCapital ? "★" : "⌂")
-                .font(.system(size: 11))
+    // Every base — yours, an ally's, anyone else's — uses the same painted castle art (see
+    // icon_village, Assets.xcassets/GameAssets/UI) with a coloured ring behind it for
+    // ownership, plus a name tag underneath: the reference video's own "one base icon, an
+    // alliance-coloured chip, a name label" look, rather than the old plain star/house glyph.
+    private func villageMarker(_ village: TileVillage, size: CGFloat) -> some View {
+        let tint: Color = village.isMine ? Color(red: 0.42, green: 0.82, blue: 0.4)
+            : village.isAlly ? Color(red: 0.4, green: 0.68, blue: 0.95)
+            : Color(red: 0.9, green: 0.38, blue: 0.38)
+
+        return VStack(spacing: 1) {
+            ZStack {
+                Circle().fill(tint.opacity(0.35)).frame(width: size * 0.92, height: size * 0.92)
+                Circle().stroke(tint, lineWidth: 1.5).frame(width: size * 0.92, height: size * 0.92)
+                Image("icon_village")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.68, height: size * 0.68)
+                if village.isCapital {
+                    Text("★")
+                        .font(.system(size: max(8, size * 0.24), weight: .bold))
+                        .foregroundStyle(GameTheme.amber)
+                        .offset(x: size * 0.32, y: -size * 0.32)
+                        .shadow(color: .black.opacity(0.6), radius: 1)
+                }
+            }
+            Text(village.name)
+                .font(.system(size: max(7, size * 0.2), weight: .semibold))
                 .foregroundStyle(.white)
-        } else if !tile.foggy, let kind, let icon = WorldMapTerrain.icon(for: kind) {
-            Text(icon).font(.system(size: 10))
+                .shadow(color: .black.opacity(0.8), radius: 1)
+                .lineLimit(1)
+                .frame(maxWidth: size * 1.8)
         }
     }
 
-    // MARK: - Legend / lists
+    // MARK: - Floating HUD
+
+    private func hudButton(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .gameOctagonBadge(cut: 9)
+        }
+    }
+
+    // "Return home" badge, bottom-right — same spot and purpose as the reference video's own
+    // circular "▲ 788km" indicator: shows how far the currently-loaded window's centre is from
+    // your nearest village, tap to jump straight back. Distance is in TILES, not real-world
+    // km (this game has no such unit) — shown as "N поля" the same way the rest of the app
+    // already talks about map distance (coordinates, not a fake distance unit).
+    @ViewBuilder
+    private func homeBadge(_ mapData: WorldMapResponse) -> some View {
+        if let home = nearestOwnVillage(mapData) {
+            let dx = home.x - mapData.center.x
+            let dy = home.y - mapData.center.y
+            let distance = max(abs(dx), abs(dy)) // Chebyshev — matches this game's square grid movement, not a straight-line radius
+            if distance > 0 {
+                Button {
+                    Task { await load(x: home.x, y: home.y) }
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: "house.fill").font(.system(size: 14))
+                        Text("\(distance)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .gameOctagonBadge(cut: 10)
+                }
+            }
+        }
+    }
+
+    private func nearestOwnVillage(_ mapData: WorldMapResponse) -> VillageSummary? {
+        mapData.myVillages.min { a, b in
+            let da = max(abs(a.x - mapData.center.x), abs(a.y - mapData.center.y))
+            let db = max(abs(b.x - mapData.center.x), abs(b.y - mapData.center.y))
+            return da < db
+        }
+    }
+
+    // MARK: - Search sheet (coordinate jump + legend + village list — everything that used to
+    // sit permanently on screen above/below the map now lives behind the magnifier button
+    // instead, so the map itself gets the full screen, same as the reference video).
+
+    private var searchSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        Text("X").font(.caption).foregroundStyle(GameTheme.textSecondary)
+                        TextField("0", text: $goToXText)
+                            .keyboardType(.numbersAndPunctuation)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                        Text("Y").font(.caption).foregroundStyle(GameTheme.textSecondary)
+                        TextField("0", text: $goToYText)
+                            .keyboardType(.numbersAndPunctuation)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                        Button("Перейти") {
+                            Task {
+                                await load(x: Int(goToXText) ?? 0, y: Int(goToYText) ?? 0)
+                                showSearch = false
+                            }
+                        }
+                        .buttonStyle(.gamePrimary)
+                        .fixedSize()
+                    }
+
+                    Button("В центр мира (0|0)") {
+                        Task { await load(x: 0, y: 0); showSearch = false }
+                    }
+                    .buttonStyle(.gameSecondary)
+
+                    if let mapData {
+                        legend
+                        if !mapData.myVillages.isEmpty {
+                            myVillagesList(mapData.myVillages)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .gameScreenBackground()
+            .navigationTitle("Поиск на карте")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { showSearch = false } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
 
     private var legend: some View {
         HStack(spacing: 10) {
-            legendItem(color: Color(red: 0.56, green: 0.82, blue: 0.48), label: "Мои")
-            legendItem(color: Color(red: 0.56, green: 0.79, blue: 0.93), label: "Союзники")
-            legendItem(color: Color(red: 0.9, green: 0.6, blue: 0.6), label: "Другие")
+            legendItem(color: Color(red: 0.42, green: 0.82, blue: 0.4), label: "Мои")
+            legendItem(color: Color(red: 0.4, green: 0.68, blue: 0.95), label: "Союзники")
+            legendItem(color: Color(red: 0.9, green: 0.38, blue: 0.38), label: "Другие")
             legendItem(color: Color(red: 0.06, green: 0.09, blue: 0.15), label: "Туман")
         }
         .font(.caption2)
@@ -268,7 +368,7 @@ struct WorldMapView: View {
             Text("Мои деревни").font(.caption.bold()).foregroundStyle(GameTheme.amber)
             ForEach(villages) { v in
                 Button {
-                    Task { await load(x: v.x, y: v.y) }
+                    Task { await load(x: v.x, y: v.y); showSearch = false }
                 } label: {
                     HStack {
                         Text(v.name + (v.isCapital ? " ★" : "")).foregroundStyle(GameTheme.textPrimary)
@@ -282,48 +382,57 @@ struct WorldMapView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .gamePanel()
-        .padding(.horizontal)
     }
 
-    // MARK: - Selected-tile details
+    // MARK: - Selected-tile details (now a bottom sheet instead of an inline card, so it never
+    // competes with the map for space)
 
-    @ViewBuilder
-    private func detailsPanel(_ tile: WorldMapTile) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if tile.foggy {
-                Text("Туман войны").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
-                if let mapData {
-                    Text("Этот участок вне поля зрения ваших деревень (радиус обзора — \(mapData.visionRadius)). Постройте или отвоюйте деревню ближе, чтобы его открыть.")
-                        .font(.caption)
-                        .foregroundStyle(GameTheme.textSecondary)
-                }
-            } else if let village = tile.village {
-                Text(village.name).font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
-                Text("(\(village.x)|\(village.y)) · \(village.owner)").font(.caption).foregroundStyle(GameTheme.textSecondary)
-                if let allianceTag = village.allianceTag {
-                    Text("[\(allianceTag)]").font(.caption2).foregroundStyle(GameTheme.textMuted)
-                }
-                Text("Население: \(village.population)").font(.caption).foregroundStyle(GameTheme.textPrimary)
+    private func detailsSheet(_ tile: WorldMapTile) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if tile.foggy {
+                        Text("Туман войны").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                        if let mapData {
+                            Text("Этот участок вне поля зрения ваших деревень (радиус обзора — \(mapData.visionRadius)). Постройте или отвоюйте деревню ближе, чтобы его открыть.")
+                                .font(.caption)
+                                .foregroundStyle(GameTheme.textSecondary)
+                        }
+                    } else if let village = tile.village {
+                        Text(village.name).font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                        Text("(\(village.x)|\(village.y)) · \(village.owner)").font(.caption).foregroundStyle(GameTheme.textSecondary)
+                        if let allianceTag = village.allianceTag {
+                            Text("[\(allianceTag)]").font(.caption2).foregroundStyle(GameTheme.textMuted)
+                        }
+                        Text("Население: \(village.population)").font(.caption).foregroundStyle(GameTheme.textPrimary)
 
-                if previewLoading {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else if let preview {
-                    buildingsGrid(preview)
-                } else {
-                    Button("Посмотреть постройки") {
-                        Task { await loadPreview(id: village.id) }
+                        if previewLoading {
+                            ProgressView().frame(maxWidth: .infinity)
+                        } else if let preview {
+                            buildingsGrid(preview)
+                        } else {
+                            Button("Посмотреть постройки") {
+                                Task { await loadPreview(id: village.id) }
+                            }
+                            .buttonStyle(.gameSecondary)
+                            .fixedSize()
+                        }
+                    } else {
+                        Text("Свободный участок").font(.subheadline).foregroundStyle(GameTheme.textPrimary)
+                        Text("(\(tile.x)|\(tile.y))").font(.caption).foregroundStyle(GameTheme.textSecondary)
                     }
-                    .buttonStyle(.gameSecondary)
-                    .fixedSize()
                 }
-            } else {
-                Text("Свободный участок").font(.subheadline).foregroundStyle(GameTheme.textPrimary)
-                Text("(\(tile.x)|\(tile.y))").font(.caption).foregroundStyle(GameTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+            .gameScreenBackground()
+            .navigationTitle(tile.village?.name ?? "Участок")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { selectedTile = nil } }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .gamePanel()
-        .padding(.horizontal)
+        .presentationDetents([.medium, .large])
     }
 
     private func buildingsGrid(_ preview: PublicVillage) -> some View {

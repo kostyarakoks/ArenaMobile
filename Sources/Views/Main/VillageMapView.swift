@@ -293,43 +293,6 @@ private struct ConstructionBadge: View {
     }
 }
 
-/// Simple pinch-to-zoom + native pan (via a nested ScrollView, so panning "just works" once
-/// zoomed instead of needing a hand-rolled drag gesture) — native equivalent of
-/// Components/ZoomableMap.vue.
-private struct ZoomableMapContainer<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-
-    @State private var zoom: CGFloat = 1
-    @State private var pinchDelta: CGFloat = 1
-
-    var body: some View {
-        GeometryReader { outer in
-            // Fills whatever space the parent offers (the whole screen minus the nav bar and
-            // bottom dock, per "карту на весь экран") instead of aspect-locking to the viewbox
-            // — the background art itself covers via .aspectRatio(contentMode: .fill) (see
-            // backgroundImage), and marker positions already scale off this same real size
-            // (mapCanvas's own GeometryReader), so nothing needs the viewbox ratio here.
-            let baseWidth = outer.size.width
-            let baseHeight = outer.size.height
-            let effectiveZoom = max(1, min(3, zoom * pinchDelta))
-
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                content()
-                    .frame(width: baseWidth * effectiveZoom, height: baseHeight * effectiveZoom)
-            }
-            .frame(width: baseWidth, height: baseHeight)
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in pinchDelta = value }
-                    .onEnded { value in
-                        zoom = max(1, min(3, zoom * value))
-                        pinchDelta = 1
-                    }
-            )
-        }
-    }
-}
-
 /// Merges BuildingActionMenu (built plot) + EmptyPlotOverlay (empty plot) + UpgradeModal (both)
 /// into one bottom sheet: fetches the same "what can go here" catalogue the web app's popups
 /// fetch, and — for a built plot, or once a candidate is picked on an empty one — shows the
