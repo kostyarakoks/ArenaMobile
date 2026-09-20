@@ -7,6 +7,12 @@ import SwiftUI
 /// tab gets built out next.
 struct NavDestinationView: View {
     let item: NavItem
+    // Lets a destination switch MainTabView's own active tab directly (currently used by
+    // WorldMapView's "tap your own village -> jump straight into it" shortcut, mirroring the
+    // web app's router.visit(route('village.buildings', ...))) — optional so every other call
+    // site (NavigationLink pushes from MapOverlayControls, the "Ещё" sheet, previews) doesn't
+    // need to supply one.
+    var selectItem: ((NavItem) -> Void)? = nil
 
     var body: some View {
         switch item.id {
@@ -15,7 +21,7 @@ struct NavDestinationView: View {
         case "village":
             VillageMapView()
         case "map":
-            WorldMapView()
+            WorldMapView(onOwnVillageSelected: { selectItem?(.village) })
         case "hero":
             HeroView()
         case "market":
@@ -106,4 +112,5 @@ private struct ProfileScreen: View {
         NavDestinationView(item: NavItem.mainItems[0])
     }
     .environmentObject(AuthSession())
+    .environmentObject(VillageSession())
 }

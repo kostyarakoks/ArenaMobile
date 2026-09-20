@@ -11,6 +11,13 @@ import SwiftUI
 /// web side's own tap-to-preview panel.
 struct WorldMapView: View {
     @EnvironmentObject private var session: AuthSession
+    @EnvironmentObject private var villageSession: VillageSession
+
+    // Called instead of opening the tile-details panel when the tapped tile is one of YOUR OWN
+    // villages — jumps straight into it, mirroring the web map's own onMapClick shortcut
+    // (tile.village?.is_mine -> router.visit(route('village.buildings', ...))). Defaults to a
+    // no-op so #Preview and any other caller that doesn't care still compiles.
+    var onOwnVillageSelected: () -> Void = {}
 
     @State private var mapData: WorldMapResponse?
     @State private var isLoading = true
@@ -46,7 +53,14 @@ struct WorldMapView: View {
             .padding(.vertical, 12)
         }
         .gameScreenBackground()
-        .navigationTitle("Карта")
+        // No system nav title any more — the global resources header (GameHeaderBar, wired up
+        // in MainTabView) is the only top chrome now, same "нет отдельного заголовка, просто
+        // карта" shape the web version's Map/Index.vue has under GameLayout.
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .trailing) {
+            MapOverlayControls()
+                .padding(.trailing, 12)
+        }
         .task {
             guard mapData == nil else { return }
             await load(x: 0, y: 0)
@@ -171,6 +185,15 @@ struct WorldMapView: View {
         let kind = tile.foggy || tile.village != nil ? nil : WorldMapTerrain.kind(x: tile.x, y: tile.y)
 
         return Button {
+            // Tapping one of YOUR OWN villages jumps straight into it — nothing to "scout" about
+            // a village you already own, so skip the details panel entirely (see
+            // onOwnVillageSelected's own doc comment above). Every other tile (someone else's
+            // village, an empty plot, fog) still opens the details panel as before.
+            if let village = tile.village, village.isMine {
+                villageSession.selectVillage(id: village.id, session)
+                onOwnVillageSelected()
+                return
+            }
             selectedTile = tile
             preview = nil
         } label: {

@@ -5,6 +5,12 @@ import SwiftUI
 /// matches the web app exactly instead of iOS's own >5-items-collapse-to-"More" behavior (which
 /// would put different items behind "More" than the web version does).
 struct MainTabView: View {
+    @EnvironmentObject private var session: AuthSession
+    // One instance for the whole signed-in session — see VillageSession.swift. Injected below
+    // so GameHeaderBar, VillageMapView, WorldMapView and MapOverlayControls all read/write the
+    // same active-village state instead of each fetching their own copy.
+    @StateObject private var villageSession = VillageSession()
+
     @State private var selected: NavItem = .village
     @State private var showMore = false
 
@@ -23,14 +29,27 @@ struct MainTabView: View {
 
     var body: some View {
         NavigationStack {
-            NavDestinationView(item: selected)
+            // `selectItem` lets a screen further down (currently WorldMapView, tapping your own
+            // village) switch the active tab itself — the native equivalent of the web app's
+            // router.visit(route('village.buildings', ...)) jump, since there's no URL/route to
+            // navigate to here, just this same @State this view already owns.
+            NavDestinationView(item: selected, selectItem: { selected = $0 })
+        }
+        // Global resources header — see GameHeaderBar's own doc comment for why this moved here
+        // from being VillageMapView's own private header.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GameHeaderBar()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomDock
         }
+        .environmentObject(villageSession)
         .sheet(isPresented: $showMore) {
             moreSheet
                 .presentationDetents([.medium, .large])
+        }
+        .task {
+            await villageSession.loadIfNeeded(session)
         }
     }
 

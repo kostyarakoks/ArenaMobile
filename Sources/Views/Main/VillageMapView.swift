@@ -18,30 +18,31 @@ import SwiftUI
 ///  - pinch-to-zoom + pan on the map itself (native equivalent of ZoomableMap.vue).
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
+    // Active-village state lives here now (see VillageSession.swift) — shared with the global
+    // header (GameHeaderBar) and the floating map controls (MapOverlayControls) instead of this
+    // screen owning its own private copy.
+    @EnvironmentObject private var villageSession: VillageSession
 
-    @State private var villages: [VillageSummary] = []
-    @State private var selectedVillageID: Int?
-    @State private var detail: VillageDetail?
-    @State private var isLoading = true
-    @State private var errorMessage: String?
     @State private var tappedSlot: Int?
+
+    private var selectedVillageID: Int? { villageSession.selectedVillageID }
+    private var detail: VillageDetail? { villageSession.detail }
+    private var isLoading: Bool { villageSession.isLoading }
+    private var errorMessage: String? { villageSession.errorMessage }
 
     var body: some View {
         content
-            // The reference header art the user supplied is a full custom bar (emblem +
-            // nameplate + resource/currency badges + quick-action icons), not something that
-            // fits the system toolbar's principal slot — so the native nav bar is hidden for
-            // this screen entirely and topHeaderBar takes its place via safeAreaInset, the same
-            // way MainTabView's bottomDock reserves space at the bottom. The map's own
-            // `.frame(maxWidth: .infinity, maxHeight: .infinity)` (see `content` below) then
-            // fills exactly what's left between the two, same as before.
+            // The global resources header (GameHeaderBar, wired up in MainTabView) is the only
+            // top chrome now — this screen no longer draws its own header (see
+            // MapOverlayControls for where the village switcher and profile/messages/quests
+            // shortcuts that used to live in that header moved to instead).
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                topHeaderBar
+            .overlay(alignment: .trailing) {
+                MapOverlayControls()
+                    .padding(.trailing, 12)
             }
             .task {
-                guard villages.isEmpty else { return }
-                await loadVillages()
+                await villageSession.loadIfNeeded(session)
             }
             .sheet(item: Binding(get: { tappedSlot.map { IdentifiableInt(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
                 if let detail, let villageID = selectedVillageID {
@@ -50,7 +51,7 @@ struct VillageMapView: View {
                         slot: wrapped.id,
                         builtSlot: detail.buildings.first(where: { $0.slot == wrapped.id }),
                         village: detail.village,
-                        onChanged: { Task { await loadDetail(id: villageID) } }
+                        onChanged: { villageSession.refreshSelected(session) }
                     )
                     .presentationDetents([.medium, .large])
                 }
@@ -70,8 +71,10 @@ struct VillageMapView: View {
                 Text("Не удалось загрузить деревню").font(.headline).foregroundStyle(GameTheme.textPrimary)
                 Text(errorMessage).font(.footnote).foregroundStyle(GameTheme.textMuted).multilineTextAlignment(.center)
                 Button("Повторить") {
-                    Task {
-                        if let id = selectedVillageID { await loadDetail(id: id) } else { await loadVillages() }
+                    if let id = selectedVillageID {
+                        Task { await villageSession.loadDetail(id: id, session) }
+                    } else {
+                        Task { await villageSession.loadVillages(session) }
                     }
                 }
                 .buttonStyle(.gamePrimary)
@@ -89,156 +92,6 @@ struct VillageMapView: View {
                 .gameScreenBackground()
         } else {
             Color.clear.gameScreenBackground()
-        }
-    }
-
-    /// Full custom top bar, built to match the reference art the user supplied: a circular
-    /// emblem, a cut-corner "nameplate" (village name/coords, tap to switch villages), a row of
-    /// cut-corner resource/currency badges, and three cut-corner quick-action icons on the
-    /// trailing end (settings/messages/quests — the gear/envelope/scroll icons in that
-    /// reference). Everything reuses CutCornerShape/gameOctagonBadge (GameTheme.swift) so the
-    /// frame art is consistent even before any of it is swapped for bespoke PNGs — see the
-    /// per-badge comments below for which ones that applies to.
-    ///
-    /// Wrapped in a horizontal ScrollView, same fallback the web header itself uses
-    /// (GameLayout.vue's own `overflow-x-auto` comment) — a phone narrow enough that the full
-    /// row (emblem + nameplate + 6 badges + 3 action icons) doesn't fit scrolls this one row
-    /// instead of wrapping or clipping content.
-    private var topHeaderBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                emblemBadge
-
-                nameplate
-
-                // The map no longer sits in a ScrollView (it fills the screen edge to edge), so
-                // the usual pull-to-refresh gesture has nothing to attach to — this replaces it,
-                // same as the toolbar refresh button it's taking the place of.
-                Button {
-                    if let id = selectedVillageID { Task { await loadDetail(id: id) } }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(GameTheme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .gameOctagonBadge(cut: 8)
-                }
-
-                // Resource badges — wood/clay/iron/crop. The reference image only had frame art
-                // for two of these (wood, clay); iron/crop use the same frame with the app's
-                // existing icon glyphs until matching bespoke art is dropped in.
-                if let info = detail?.village {
-                    resourceBadge("🌲", info.wood)
-                    resourceBadge("🧱", info.clay)
-                    resourceBadge("⛏️", info.iron)
-                    resourceBadge("🌾", info.crop)
-                }
-
-                // Currency badges — the reference's coin + ruby slots. GameUser has two currency
-                // fields (see GameUser.swift): `silver` (a plain in-game coin, matching the
-                // reference's coin icon) and `gold` (the premium currency, shown as 💎 gold
-                // everywhere else in this app — Shop, the build-instant-finish cost — matching
-                // the reference's gem/ruby icon).
-                if let user = session.currentUser {
-                    resourceBadge("🪙", user.silver)
-                    resourceBadge("💎", user.gold)
-                }
-
-                Spacer(minLength: 4)
-
-                // Trailing quick-action icons — the reference's gear/envelope/scroll trio.
-                // These push onto this screen's own NavigationStack (its nav bar is hidden, but
-                // the stack itself is still there — see body above), so each opens with a normal
-                // back button into the map.
-                actionLink(icon: "⚙️", id: "profile", label: "Профиль")
-                actionLink(icon: "✉️", id: "messages", label: "Сообщения")
-                actionLink(icon: "📜", id: "quests", label: "Задания")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-        }
-        .background(
-            LinearGradient(colors: [GameTheme.panelTop, GameTheme.background], startPoint: .top, endPoint: .bottom)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(GameTheme.amber.opacity(0.35)).frame(height: 1)
-                }
-                .ignoresSafeArea(edges: .top)
-        )
-    }
-
-    /// Circular double-ring emblem on the far left of the header, matching the reference art's
-    /// crest badge. A vector stand-in (SF Symbol shield + two gold rings) rather than a raster
-    /// crop of the reference image, so it stays crisp — swap in a bespoke PNG imageset later by
-    /// replacing this computed property's body with an `Image(...)`.
-    private var emblemBadge: some View {
-        ZStack {
-            Circle().fill(LinearGradient(colors: [GameTheme.panelTop, GameTheme.panelBottom], startPoint: .top, endPoint: .bottom))
-            Circle()
-                .stroke(LinearGradient(colors: [GameTheme.amberLight, GameTheme.btnBottom], startPoint: .top, endPoint: .bottom), lineWidth: 3)
-                .padding(2)
-            Circle().stroke(GameTheme.amber.opacity(0.5), lineWidth: 1).padding(6)
-            Image(systemName: "shield.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(GameTheme.textSecondary)
-        }
-        .frame(width: 44, height: 44)
-    }
-
-    /// The reference's elongated "nameplate" slot — village name + coords, doubling as the
-    /// village switcher (tap opens the same menu the old toolbar's list-icon button did).
-    private var nameplate: some View {
-        Menu {
-            ForEach(villages) { village in
-                Button {
-                    selectedVillageID = village.id
-                    Task { await loadDetail(id: village.id) }
-                } label: {
-                    HStack {
-                        Text(village.name)
-                        if village.id == selectedVillageID { Image(systemName: "checkmark") }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                if let info = detail?.village {
-                    Text("\(info.name) (\(info.x)|\(info.y))\(info.isCapital ? " ★" : "")")
-                        .font(.system(size: 12, weight: .bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                } else {
-                    Text("Город").font(.system(size: 13, weight: .bold))
-                }
-                if villages.count > 1 {
-                    Image(systemName: "chevron.down").font(.system(size: 9)).foregroundStyle(GameTheme.textMuted)
-                }
-            }
-            .foregroundStyle(GameTheme.amber)
-            .padding(.horizontal, 14)
-            .frame(height: 36)
-            .frame(minWidth: 110)
-            .gameOctagonBadge(cut: 14)
-        }
-        .disabled(villages.count <= 1)
-    }
-
-    private func resourceBadge(_ icon: String, _ value: Int) -> some View {
-        VStack(spacing: 1) {
-            Text(icon).font(.system(size: 15))
-            Text("\(value)").font(.system(size: 8, weight: .bold, design: .rounded)).foregroundStyle(GameTheme.textPrimary)
-        }
-        .frame(width: 38, height: 36)
-        .gameOctagonBadge(cut: 9)
-    }
-
-    private func actionLink(icon: String, id: String, label: String) -> some View {
-        NavigationLink {
-            NavDestinationView(item: NavItem(id: id, icon: icon, label: label))
-        } label: {
-            Text(icon)
-                .font(.system(size: 15))
-                .frame(width: 34, height: 34)
-                .gameOctagonBadge(cut: 8)
         }
     }
 
@@ -396,39 +249,6 @@ struct VillageMapView: View {
         .buttonStyle(.plain)
     }
 
-    private func loadVillages() async {
-        guard let token = session.bearerToken else { return }
-        isLoading = true
-        errorMessage = nil
-        do {
-            let list = try await APIClient.shared.fetchVillages(token: token)
-            villages = list
-            let target = list.first(where: { $0.isCapital }) ?? list.first
-            selectedVillageID = target?.id
-            if let id = target?.id {
-                await loadDetail(id: id)
-            } else {
-                isLoading = false
-            }
-        } catch {
-            session.signOutIfUnauthorized(error)
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Неизвестная ошибка."
-            isLoading = false
-        }
-    }
-
-    private func loadDetail(id: Int) async {
-        guard let token = session.bearerToken else { return }
-        isLoading = true
-        errorMessage = nil
-        do {
-            detail = try await APIClient.shared.fetchVillage(id: id, token: token)
-        } catch {
-            session.signOutIfUnauthorized(error)
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Неизвестная ошибка."
-        }
-        isLoading = false
-    }
 }
 
 private struct IdentifiableInt: Identifiable { let id: Int }
