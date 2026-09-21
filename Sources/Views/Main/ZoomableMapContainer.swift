@@ -43,7 +43,10 @@ struct ZoomableMapContainer<Content: View>: View {
     // old top-left-origin behaviour (WorldMapView doesn't have a single "main" point to center on).
     var initialCenterFraction: CGPoint?
 
-    init(minZoom: CGFloat = 1, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
+    // "нельзя уменьшить карту, меньше чем окно по вертикали" — was hard-pinned at 1 (== "fits the
+    // window exactly, no smaller"), so `minimumZoomScale` never allowed pinching out past that.
+    // 0.5 lets the player shrink the whole map to half size, well below the window on both axes.
+    init(minZoom: CGFloat = 0.5, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
         self.contentAspect = contentAspect
@@ -119,7 +122,14 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
-        scrollView.zoomScale = minZoom
+        // Was `scrollView.zoomScale = minZoom` — harmless while minZoom was hard-pinned at 1,
+        // but now that minZoom can go below 1 (see init's own comment), that line would have
+        // made the map open ALREADY zoomed out small by default instead of at a sensible "fits
+        // the window" starting point. The lower bound and the starting point are two different
+        // concerns: `minimumZoomScale` is how far the player CAN pinch out; the starting zoom
+        // should stay 1 regardless (clamped into [minZoom, maxZoom] just in case a future call
+        // site ever passes a range that doesn't include 1).
+        scrollView.zoomScale = min(max(1, minZoom), maxZoom)
         scrollView.bouncesZoom = true
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
@@ -217,13 +227,24 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         // (bouncesZoom = true lets the gesture overshoot before UIKit springs it back), so a
         // leftover offset from that bounce could park the visible viewport somewhere that isn't
         // (0,0)-anchored — e.g. with the top-left corner (where the village name/tier badge live,
-        // see mapCanvas's own `.position(x: 46, y: ...)`) scrolled out from under the header. At
-        // minimum zoom the content is exactly the scroll view's own bounds size (baseSize ==
-        // outer.size, see ZoomableMapContainer.baseSize), so there is nowhere valid to pan to at
-        // all — pin the offset to (0, 0) whenever zoomScale returns to minimumZoomScale, and
-        // otherwise keep offset within the always-valid [0, contentSize - bounds] range.
+        // see mapCanvas's own `.position(x: 46, y: ...)`) scrolled out from under the header.
+        //
+        // Also centers the content whenever it's now SMALLER than the scroll view's own bounds —
+        // possible since minZoom can go below 1 (see the init's own comment,
+        // "нельзя уменьшить карту, меньше чем окно по вертикали"). UIScrollView pins undersized
+        // content to its top-left corner by default; the standard fix (the same technique Apple's
+        // own PhotoScroller sample uses) is a symmetric contentInset covering the leftover space
+        // on each axis, recomputed from contentSize vs. bounds every time zoomScale changes.
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            if scrollView.zoomScale <= scrollView.minimumZoomScale {
+            let bounds = scrollView.bounds.size
+            let content = scrollView.contentSize
+            let horizontalInset = max(0, (bounds.width - content.width) / 2)
+            let verticalInset = max(0, (bounds.height - content.height) / 2)
+            scrollView.contentInset = UIEdgeInsets(top: verticalInset, left: horizontalInset, bottom: verticalInset, right: horizontalInset)
+
+            if scrollView.zoomScale <= scrollView.minimumZoomScale, horizontalInset == 0, verticalInset == 0 {
+                // Content still exactly fills (or exceeds) the viewport at minimum zoom — the old
+                // "nowhere valid to pan to" case — pin to the top-left corner.
                 scrollView.contentOffset = .zero
                 return
             }

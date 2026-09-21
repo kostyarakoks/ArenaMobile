@@ -122,7 +122,10 @@ struct WorldMapView: View {
         let width = mapData.bounds.maxX - mapData.bounds.minX + 1
         let height = mapData.bounds.maxY - mapData.bounds.minY + 1
 
-        return ZoomableMapContainer(minZoom: 1, maxZoom: 4) {
+        // minZoom lowered from 1 to the shared 0.5 default (see ZoomableMapContainer's own init
+        // comment, "нельзя уменьшить карту, меньше чем окно по вертикали") so this map can be
+        // pinched out smaller than the window too, same as the village/fields maps.
+        return ZoomableMapContainer(maxZoom: 4) {
             GeometryReader { geo in
                 let cellW = geo.size.width / CGFloat(width)
                 let cellH = geo.size.height / CGFloat(height)
