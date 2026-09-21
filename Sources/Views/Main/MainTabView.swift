@@ -43,60 +43,52 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // "область экрана должна быть разделена на три части: верх 1/7, низ 1/7, средняя часть
-        // 5/7" — an exact proportional split.
+        // Верхний и нижний бар снова имеют "естественный" размер (по своему содержимому —
+        // dockHeight/crestOverlap для дока, padding+контент для GameHeaderBar), как было до
+        // попытки жёстко зафиксировать их в 1/7 высоты экрана — тот вариант делал бары заметно
+        // крупнее, чем нужно, на большинстве экранов.
         //
-        // Previously this used NavigationStack + .safeAreaInset(edge: .top/.bottom), which is the
-        // idiomatic SwiftUI way to hang bars off the edges — but that approach makes bars FLOAT
-        // over the content: a ScrollView/List inside the middle screen can scroll its rows
-        // underneath the bars (Apple's "translucent bars" look). The requirement here is the
-        // opposite: the middle content must NEVER sit behind either bar, it must live strictly
-        // in the 5/7 band between them.
-        //
-        // So the three pieces are now plain VStack neighbors (spacing: 0). Header and dock
-        // occupy their own fixed 1/7 each; the NavigationStack in the middle takes exactly what
-        // is left via .frame(maxHeight: .infinity). Nothing overlays anything, so nothing can
-        // slide under a bar.
-        GeometryReader { screen in
-            let barHeight = screen.size.height / 7
+        // Требование "область экрана должна быть разделена на три части, всё содержимое строго
+        // между верхним и нижним баром" при этом остаётся, просто выполняется по-другому: раньше
+        // бары навешивались через `.safeAreaInset`, что технически резервирует под них место, но
+        // оставляет их "плавающими" поверх контента — ScrollView/List внутри среднего экрана
+        // мог(ла) на инерции проскроллить свои строки ПОД бар (типичное поведение полупрозрачных
+        // системных баров). Здесь вместо этого простой VStack из трёх РЯДОМ стоящих (не
+        // перекрывающихся) элементов: бары занимают ровно свою естественную высоту, а
+        // NavigationStack посередине — ровно то, что осталось (`maxHeight: .infinity`), так что
+        // ничему физически некуда "заехать" под бар.
+        VStack(spacing: 0) {
+            GameHeaderBar(selectItem: { selected = $0 })
 
-            VStack(spacing: 0) {
-                // ── TOP: always at the top, fixed 1/7 height ───────────────────────
-                GameHeaderBar(selectItem: { selected = $0 }, height: barHeight)
+            NavigationStack {
+                // `selectItem` lets a screen further down (currently WorldMapView, tapping your
+                // own village) switch the active tab itself — the native equivalent of the web
+                // app's router.visit(route('village.buildings', ...)) jump, since there's no
+                // URL/route to navigate to here, just this same @State this view already owns.
+                NavDestinationView(item: selected, selectItem: { selected = $0 })
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Подстраховка: если какой-то дочерний экран попробует вылезти за свои границы
+            // (offset, transition, отрицательный padding), это обрежется здесь, а не наедет на
+            // бары сверху/снизу.
+            .clipped()
 
-                // ── MIDDLE: exactly the remaining 5/7 ──────────────────────────────
-                NavigationStack {
-                    // `selectItem` lets a screen further down (currently WorldMapView, tapping
-                    // your own village) switch the active tab itself — the native equivalent of
-                    // the web app's router.visit(route('village.buildings', ...)) jump, since
-                    // there's no URL/route to navigate to here, just this same @State this view
-                    // already owns.
-                    NavDestinationView(item: selected, selectItem: { selected = $0 })
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Defensive: if a child screen tries to poke past its bounds (offset,
-                // transition, negative padding), it gets clipped here rather than eating into
-                // the bars above/below.
-                .clipped()
-
-                // ── BOTTOM: always at the bottom, fixed 1/7 height ─────────────────
-                bottomDock(height: barHeight)
-            }
-            .environmentObject(villageSession)
-            .sheet(isPresented: $showMore) {
-                moreSheet
-                    .presentationDetents([.medium, .large])
-            }
-            .task {
-                await villageSession.loadIfNeeded(session)
-            }
-            .onChange(of: selected) { newValue in
-                if newValue.id == "village" || newValue.id == "map" {
-                    lastMapOrVillage = newValue
-                }
+            bottomDock()
+        }
+        .environmentObject(villageSession)
+        .sheet(isPresented: $showMore) {
+            moreSheet
+                .presentationDetents([.medium, .large])
+        }
+        .task {
+            await villageSession.loadIfNeeded(session)
+        }
+        .onChange(of: selected) { newValue in
+            if newValue.id == "village" || newValue.id == "map" {
+                lastMapOrVillage = newValue
             }
         }
-        // Keyboard must not squash the dock when a text field is focused.
+        // Клавиатура не должна сжимать/сдвигать нижний док, когда фокус на текстовом поле.
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
@@ -111,13 +103,10 @@ struct MainTabView: View {
     // own layout instead of poking out past whatever total height this bar is given.
     private let crestOverlap: CGFloat = 11
 
-    // "нижняя часть 1/7 экрана" — takes the exact height MainTabView computed (1/7 of the
-    // screen) and stretches this bar's own background to fill ALL of it, not just its natural
-    // (icon row + crest) content size — see GameHeaderBar's matching `height` parameter for the
-    // identical reasoning. Content is top-aligned within that height (closest to the game
-    // content above it), so any slack lands at the very bottom, near the home indicator, where
-    // extra breathing room reads as intentional rather than as a gap.
-    private func bottomDock(height: CGFloat) -> some View {
+    // Естественная высота дока — снова dockHeight + crestOverlap, как было до попытки
+    // растягивать бар на ровно 1/7 экрана. Больше не принимает height: содержимое (иконки) и
+    // фон (bg_res/nav_bar_bg) теперь всегда одного и того же, естественного размера.
+    private func bottomDock() -> some View {
         HStack(spacing: 0) {
             ForEach(dockItems) { item in
                 dockButton(item: item, isActive: isDockItemActive(item)) {
@@ -132,13 +121,10 @@ struct MainTabView: View {
         }
         .frame(height: dockHeight)
         .padding(.top, crestOverlap)
-        .frame(height: height, alignment: .top)
         // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
         // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
         // gradient background so the native dock matches the web app's finished look exactly,
-        // not just an approximation of it. .ignoresSafeArea(edges: .bottom) lets the texture
-        // bleed down through the home-indicator strip even inside the outer VStack — the dock
-        // itself stays inside the safe area, only its background extends past it.
+        // not just an approximation of it.
         .background(
             Image("nav_bar_bg")
                 .resizable(resizingMode: .stretch)

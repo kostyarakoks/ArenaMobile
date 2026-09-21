@@ -20,16 +20,6 @@ struct GameHeaderBar: View {
     // reaches every other screen (see MainTabView.body's own doc comment).
     var selectItem: (NavItem) -> Void = { _ in }
 
-    // "верхняя часть должна занимать 1/7 экрана" — MainTabView now forces this bar to exactly
-    // 1/7 of the screen height via `.frame(height:)` from the OUTSIDE, but that alone only
-    // resizes the outer layout box; this view's own `.background` gradient is attached to its
-    // NATURAL (typically shorter) content size, so it wouldn't stretch to fill the extra space,
-    // leaving a gap with no bar texture behind it. Accepting the target height here and applying
-    // it BEFORE `.background` (see body) is what makes the gradient actually cover the full 1/7
-    // region. nil keeps the old "just size to content" behaviour for Previews/other call sites
-    // that don't care about the exact fraction.
-    var height: CGFloat? = nil
-
     var body: some View {
         VStack(spacing: 4) {
             // No longer a horizontal ScrollView: avatar + 4 resource badges are laid out with
@@ -71,10 +61,6 @@ struct GameHeaderBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        // Content stays its own natural size and sits at the BOTTOM of the forced `height` —
-        // any slack lands at the top, roughly where the notch/status bar already occupies real
-        // estate anyway, rather than pushing the resource row down away from it.
-        .frame(height: height, alignment: .bottom)
         .background(
             LinearGradient(colors: [GameTheme.panelTop, GameTheme.background], startPoint: .top, endPoint: .bottom)
                 .overlay(alignment: .bottom) {
