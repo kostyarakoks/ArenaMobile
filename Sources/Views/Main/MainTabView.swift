@@ -43,32 +43,44 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            // `selectItem` lets a screen further down (currently WorldMapView, tapping your own
-            // village) switch the active tab itself — the native equivalent of the web app's
-            // router.visit(route('village.buildings', ...)) jump, since there's no URL/route to
-            // navigate to here, just this same @State this view already owns.
-            NavDestinationView(item: selected, selectItem: { selected = $0 })
-        }
-        // Global resources header — see GameHeaderBar's own doc comment for why this moved here
-        // from being VillageMapView's own private header.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            GameHeaderBar(selectItem: { selected = $0 })
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomDock
-        }
-        .environmentObject(villageSession)
-        .sheet(isPresented: $showMore) {
-            moreSheet
-                .presentationDetents([.medium, .large])
-        }
-        .task {
-            await villageSession.loadIfNeeded(session)
-        }
-        .onChange(of: selected) { newValue in
-            if newValue.id == "village" || newValue.id == "map" {
-                lastMapOrVillage = newValue
+        // "область экрана должна быть разделена на три части: верх 1/7, низ 1/7, средняя часть
+        // 5/7" — an exact proportional split, not "whatever GameHeaderBar/bottomDock naturally
+        // measure out to" (the previous approach, which reserved exactly each bar's own content
+        // height — correct in the sense that content never sat BEHIND a bar, but not this exact
+        // 1/7 : 5/7 : 1/7 ratio the design calls for). RootView renders MainTabView directly
+        // with no GeometryReader of its own in between, so this one sees the true full-screen
+        // proposal — same property ZoomableMapContainer's own GeometryReader already relies on.
+        GeometryReader { screen in
+            let barHeight = screen.size.height / 7
+
+            NavigationStack {
+                // `selectItem` lets a screen further down (currently WorldMapView, tapping your
+                // own village) switch the active tab itself — the native equivalent of the web
+                // app's router.visit(route('village.buildings', ...)) jump, since there's no
+                // URL/route to navigate to here, just this same @State this view already owns.
+                NavDestinationView(item: selected, selectItem: { selected = $0 })
+            }
+            // Global resources header — see GameHeaderBar's own doc comment for why this moved
+            // here from being VillageMapView's own private header. Forced to exactly `barHeight`
+            // (1/7 of the screen) rather than sized to its own content, per the spec above.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                GameHeaderBar(selectItem: { selected = $0 }, height: barHeight)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomDock(height: barHeight)
+            }
+            .environmentObject(villageSession)
+            .sheet(isPresented: $showMore) {
+                moreSheet
+                    .presentationDetents([.medium, .large])
+            }
+            .task {
+                await villageSession.loadIfNeeded(session)
+            }
+            .onChange(of: selected) { newValue in
+                if newValue.id == "village" || newValue.id == "map" {
+                    lastMapOrVillage = newValue
+                }
             }
         }
     }
@@ -78,19 +90,19 @@ struct MainTabView: View {
     // down through the home-indicator safe area (.ignoresSafeArea below), so the icons land in
     // the visual middle of the whole painted bar instead of hugging its top edge.
     private let dockHeight: CGFloat = 74
-    // "область для карты и контента = высота экрана − верх − низ" — the nav_crest emblem
-    // pokes 11pt ABOVE the dock's own row via `.offset(y: -11)` on a decorative overlay (a
-    // common bottom-bar flourish — see below), which doesn't change bottomDock's own reported
-    // layout height. `.safeAreaInset(edge: .bottom) { bottomDock }` (MainTabView.body) only
-    // reserves whatever height it's TOLD bottomDock has, so that 11pt of painted crest used to
-    // sit OUTSIDE the reserved region — inside what the formula above counts as content area,
-    // overlapping the bottom-most row of whatever's scrolled there. Reserving `dockHeight +
-    // crestOverlap` (via the padding below) makes the true bottom safe-area exactly match the
-    // dock's actual painted extent, crest included, so the user's formula holds exactly rather
-    // than approximately.
+    // The nav_crest emblem pokes 11pt ABOVE the dock's own row via a decorative overlay (a
+    // common bottom-bar flourish — see below), which doesn't count toward the icon row's own
+    // `dockHeight`. Reserved via `.padding(.top, crestOverlap)` so it renders inside the bar's
+    // own layout instead of poking out past whatever total height this bar is given.
     private let crestOverlap: CGFloat = 11
 
-    private var bottomDock: some View {
+    // "нижняя часть 1/7 экрана" — takes the exact height MainTabView computed (1/7 of the
+    // screen) and stretches this bar's own background to fill ALL of it, not just its natural
+    // (icon row + crest) content size — see GameHeaderBar's matching `height` parameter for the
+    // identical reasoning. Content is top-aligned within that height (closest to the game
+    // content above it), so any slack lands at the very bottom, near the home indicator, where
+    // extra breathing room reads as intentional rather than as a gap.
+    private func bottomDock(height: CGFloat) -> some View {
         HStack(spacing: 0) {
             ForEach(dockItems) { item in
                 dockButton(item: item, isActive: isDockItemActive(item)) {
@@ -105,6 +117,7 @@ struct MainTabView: View {
         }
         .frame(height: dockHeight)
         .padding(.top, crestOverlap)
+        .frame(height: height, alignment: .top)
         // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
         // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
         // gradient background so the native dock matches the web app's finished look exactly,

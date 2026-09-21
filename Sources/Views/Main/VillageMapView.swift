@@ -41,6 +41,7 @@ struct VillageMapView: View {
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var renameError: String?
+    @State private var isRenameSaving = false
 
     // "строительство так и подвисает... весит на 00:00" — a previous round of this same
     // investigation guessed the server sent fractional-second timestamps and "fixed" this
@@ -120,14 +121,49 @@ struct VillageMapView: View {
                     .presentationDetents([.medium, .large])
                 }
             }
-            .alert("Переименовать деревню", isPresented: $isRenaming) {
-                TextField("Название деревни", text: $renameText)
-                Button("Сохранить") { Task { await performRename() } }
-                Button("Отмена", role: .cancel) {}
-            } message: {
-                if let renameError {
-                    Text(renameError)
+            // "не сохраняет название деревни" — a system `.alert` with an embedded `TextField`
+            // has a well-documented SwiftUI quirk: tapping the alert's action button doesn't
+            // always commit the very latest keystroke into the bound `@State` first (it reliably
+            // commits on Return, but not always on a direct button tap while the field still has
+            // focus), so the save could silently go through with a stale/earlier value. Worse,
+            // whether or not THAT was the actual cause here: tapping ANY alert button dismisses
+            // the alert immediately, and `renameError` was only ever displayed inside that same
+            // alert's `message:` — so if the save failed for any reason (network, the level-2
+            // gate, validation), the alert was already gone by the time `renameError` got set,
+            // and the player saw nothing at all happen, indistinguishable from "didn't save".
+            // A plain sheet with an ordinary `TextField` has neither problem: standard two-way
+            // binding with no special commit timing, and it only dismisses on success — a
+            // failure keeps it open with the real error visible right there, and Save disabled
+            // while a request's in flight so a slow tap can't double-fire.
+            .sheet(isPresented: $isRenaming) {
+                NavigationStack {
+                    Form {
+                        Section {
+                            TextField("Название деревни", text: $renameText)
+                                .disabled(isRenameSaving)
+                        } footer: {
+                            if let renameError {
+                                Text(renameError).foregroundStyle(GameTheme.bad)
+                            }
+                        }
+                    }
+                    .navigationTitle("Переименовать деревню")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Отмена") { isRenaming = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            if isRenameSaving {
+                                ProgressView()
+                            } else {
+                                Button("Сохранить") { Task { await performRename() } }
+                                    .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                    }
                 }
+                .presentationDetents([.height(190)])
             }
     }
 
@@ -135,8 +171,12 @@ struct VillageMapView: View {
         guard let token = session.bearerToken else { return }
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let villageID = selectedVillageID else { return }
+        renameError = nil
+        isRenameSaving = true
+        defer { isRenameSaving = false }
         do {
             try await APIClient.shared.renameVillage(id: villageID, name: trimmed, token: token)
+            isRenaming = false
             villageSession.refreshSelected(session)
         } catch {
             session.signOutIfUnauthorized(error)
