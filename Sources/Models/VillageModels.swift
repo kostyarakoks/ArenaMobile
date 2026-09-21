@@ -83,6 +83,12 @@ struct VillageDetail: Codable {
         let startedAt: String
         let finishesAt: String
         let instantFinishCost: Int
+        // "строительство так и подвисает... весит на 00:00" — server-computed, straight from
+        // BuildQueueItem::remainingSeconds() (same source instant_finish_cost above is priced
+        // from), so "is this done yet" never depends on the client successfully parsing
+        // startedAt/finishesAt back into a Date first. See VillageController::queueProps()'s own
+        // doc comment for the full story of why that used to be the failure point.
+        let remainingSeconds: Int
 
         // A village's queue can hold more than one entry for the very same slot (an upgrade
         // queued to start right after the one ahead of it finishes) — slot alone isn't unique.
@@ -95,6 +101,7 @@ struct VillageDetail: Codable {
             case startedAt = "started_at"
             case finishesAt = "finishes_at"
             case instantFinishCost = "instant_finish_cost"
+            case remainingSeconds = "remaining_seconds"
         }
     }
 

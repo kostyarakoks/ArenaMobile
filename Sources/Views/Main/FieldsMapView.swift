@@ -26,14 +26,14 @@ struct FieldsMapView: View {
     // 0:00 forever once a field's queue entry passes finishes_at).
     @State private var lastConstructionRefreshAttempt: Date = .distantPast
 
-    // Same fix as VillageMapView.swift's identical formatter — see its own doc comment. Default
-    // `ISO8601DateFormatter()` can't parse the fractional-second timestamps Laravel's Eloquent
-    // `datetime` cast serializes by default ("...123456Z"), so `date(from:)` silently returned
-    // nil and this poll's "did a field finish" check never fired — the real cause behind
-    // "строительство так и подвисает", not a server-side bug at all.
+    // A previous round wrongly set `.withFractionalSeconds` here, guessing the server sent
+    // fractional-second timestamps — it never has, see VillageMapView.swift's identical
+    // formatter and its own doc comment for the full story (Api\VillageController::queueProps()
+    // has always used Carbon's `toIso8601String()`, which has no fractional seconds). That
+    // "fix" broke parsing of the real format instead of fixing anything. Plain
+    // `ISO8601DateFormatter()` is what actually matches it.
     private static let queueDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 

@@ -78,6 +78,17 @@ struct MainTabView: View {
     // down through the home-indicator safe area (.ignoresSafeArea below), so the icons land in
     // the visual middle of the whole painted bar instead of hugging its top edge.
     private let dockHeight: CGFloat = 74
+    // "область для карты и контента = высота экрана − верх − низ" — the nav_crest emblem
+    // pokes 11pt ABOVE the dock's own row via `.offset(y: -11)` on a decorative overlay (a
+    // common bottom-bar flourish — see below), which doesn't change bottomDock's own reported
+    // layout height. `.safeAreaInset(edge: .bottom) { bottomDock }` (MainTabView.body) only
+    // reserves whatever height it's TOLD bottomDock has, so that 11pt of painted crest used to
+    // sit OUTSIDE the reserved region — inside what the formula above counts as content area,
+    // overlapping the bottom-most row of whatever's scrolled there. Reserving `dockHeight +
+    // crestOverlap` (via the padding below) makes the true bottom safe-area exactly match the
+    // dock's actual painted extent, crest included, so the user's formula holds exactly rather
+    // than approximately.
+    private let crestOverlap: CGFloat = 11
 
     private var bottomDock: some View {
         HStack(spacing: 0) {
@@ -93,6 +104,7 @@ struct MainTabView: View {
             }
         }
         .frame(height: dockHeight)
+        .padding(.top, crestOverlap)
         // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
         // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
         // gradient background so the native dock matches the web app's finished look exactly,
@@ -103,11 +115,15 @@ struct MainTabView: View {
                 .ignoresSafeArea(edges: .bottom)
         )
         .overlay(alignment: .top) {
+            // No `.offset` needed any more — the `.padding(.top, crestOverlap)` above already
+            // shifted this view's own top edge up by exactly the 11pt the crest used to be
+            // offset by, so aligning it flush to THIS (now taller) view's top edge lands it in
+            // the identical visual spot as before, just within the reserved safe area now
+            // instead of poking out past it.
             Image("nav_crest")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(height: 22)
-                .offset(y: -11)
                 .allowsHitTesting(false)
         }
     }

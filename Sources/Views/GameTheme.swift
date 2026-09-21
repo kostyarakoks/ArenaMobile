@@ -144,10 +144,23 @@ extension View {
     /// ScrollView inside `content` — those propagate via the environment, not a direct-child
     /// requirement, the same way they already worked when chained after `.safeAreaInset` before.
     func withScreenTitle<Title: View>(@ViewBuilder title: () -> Title) -> some View {
+        // "основной экран должен быть в зеленой зоне" — without an explicit
+        // `.frame(maxWidth: .infinity, maxHeight: .infinity)` here, this VStack only asks for
+        // its IDEAL size (title's fixed height + however tall the List wants to be showing every
+        // row at once, since a bare VStack doesn't force a scrollable child to clip to a bounded
+        // height the way `.safeAreaInset` used to). Whatever presented this VStack (the
+        // NavigationStack pushing it, with its native bar hidden) then had an oversized view to
+        // fit into a bounded screen rect however it saw fit — observed as the title bar and the
+        // first several list rows being cropped away entirely, as if the content had scrolled or
+        // been centered inside its own oversized bounds, with no way to scroll back up to see
+        // them. Forcing this VStack to actually fill (not just fit) the space it's given closes
+        // that gap — the List inside `self` then gets a real bounded height to scroll within,
+        // same as it always correctly did before this VStack refactor.
         VStack(spacing: 0) {
             title()
             self
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -42,23 +42,14 @@ struct VillageMapView: View {
     @State private var renameText = ""
     @State private var renameError: String?
 
-    // "строительство так и подвисает в незаконченых" — THE actual root cause, after three
-    // rounds of server-side fixes that were each real improvements but never the culprit: this
-    // formatter's default `.formatOptions` (`.withInternetDateTime`) can't parse fractional
-    // seconds, but Laravel's Eloquent `datetime` cast serializes Carbon timestamps to JSON as
-    // e.g. "2026-09-21T02:53:00.123456Z" — WITH microseconds — by default (`Carbon::toJSON()`).
-    // `date(from:)` on a string it can't parse returns `nil`, and the `guard let finishes = ...
-    // else { return false }` below silently treated every single tick as "not finished yet",
-    // forever — so this poll's `hasFinished` check could never fire, no matter how correct the
-    // server's own completion logic was. Adding `.withFractionalSeconds` is the fix; see also
-    // the identical formatter in FieldsMapView.swift and `ConstructionBadge`'s own formatter
-    // further down in this file, both hit the exact same bug for the same reason.
-    private static let queueDateFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
+    // "строительство так и подвисает... весит на 00:00" — a previous round of this same
+    // investigation guessed the server sent fractional-second timestamps and "fixed" this
+    // screen's date formatter to require them — but Api\VillageController::queueProps() has
+    // always used Carbon's `toIso8601String()`, which never includes fractional seconds; that
+    // "fix" actually broke parsing of the real format instead. Fixed properly this time by
+    // reading the actual server code instead of assuming, and by no longer depending on
+    // client-side date parsing for the "is this done" check at all — see `remainingSeconds` on
+    // VillageDetail.QueueEntry and the poll loop below, which now just compares that Int.
     private var selectedVillageID: Int? { villageSession.selectedVillageID }
     private var detail: VillageDetail? { villageSession.detail }
     private var isLoading: Bool { villageSession.isLoading }
@@ -92,8 +83,21 @@ struct VillageMapView: View {
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     guard let queue = villageSession.detail?.queue, !queue.isEmpty else { continue }
+                    // `finishesAt` is an ABSOLUTE timestamp, so comparing it straight against
+                    // `.now` is driftless regardless of how long ago this queue snapshot was
+                    // fetched — unlike `remainingSeconds` (a relative offset frozen at fetch
+                    // time, which would need its own separate "how long ago was that fetch"
+                    // bookkeeping to stay accurate, not worth the complexity when this absolute
+                    // comparison already does the job correctly). A previous round of this same
+                    // investigation wrongly assumed the server sent fractional-second timestamps
+                    // and configured this formatter to require them — but
+                    // Api\VillageController::queueProps() has always used Carbon's
+                    // `toIso8601String()`, which never includes fractional seconds; that "fix"
+                    // broke parsing of the real format instead of fixing anything. Plain
+                    // `ISO8601DateFormatter()` (no custom `.formatOptions`) is what actually
+                    // matches it.
                     let hasFinished = queue.contains { entry in
-                        guard let finishes = Self.queueDateFormatter.date(from: entry.finishesAt) else { return false }
+                        guard let finishes = ISO8601DateFormatter().date(from: entry.finishesAt) else { return false }
                         return finishes <= .now
                     }
                     // Re-checked every tick but only actually fires every few seconds — avoids
@@ -412,16 +416,15 @@ struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
     var scale: CGFloat = 1
 
-    // Same fractional-seconds fix as `queueDateFormatter` above — without it, both `started`/
-    // `finishes` below silently fell back to `.now` (via `?? .now`) on every render, since
-    // parsing the server's "...000000Z"-style timestamp always failed, making `span` collapse
-    // to ~0 and the progress bar/countdown read as permanently "just finishing" instead of
-    // showing the real remaining time.
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    // "весит на 00:00" — this is exactly that symptom: a previous round wrongly set
+    // `.withFractionalSeconds` here (guessing the server sent fractional-second timestamps; it
+    // never has — see Api\VillageController::queueProps()'s own doc comment), which made BOTH
+    // `started`/`finishes` below silently fall back to `.now` (via `?? .now`) on every render,
+    // since parsing then always failed. `span` (finishes - started) collapsed to ~0, so the
+    // progress bar/countdown permanently read as "just finishing" no matter how much time was
+    // actually left. Plain `ISO8601DateFormatter()` (no custom `.formatOptions`) is what
+    // actually matches Carbon's `toIso8601String()` output.
+    private static let formatter = ISO8601DateFormatter()
 
     var body: some View {
         let started = Self.formatter.date(from: entry.startedAt) ?? .now
