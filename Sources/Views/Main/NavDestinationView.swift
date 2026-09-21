@@ -100,8 +100,15 @@ private struct ProfileScreen: View {
                     if let tribe = user.tribe { LabeledContent("Племя", value: tribe) }
                 }
                 Section("Ресурсы") {
-                    LabeledContent("Золото", value: "\(user.gold)")
-                    LabeledContent("Серебро", value: "\(user.silver)")
+                    // "в профиле убрать серебро, золото переименовать в кристалл" — `user.gold`
+                    // is the same premium-currency balance GameHeaderBar's crystalPill already
+                    // shows as 💎 (see its own doc comment) — the underlying field is still named
+                    // "gold" (inherited from the original TravianZ schema this was reskinned
+                    // from), but the game itself never surfaces a "золото" currency anywhere else
+                    // — only "кристаллы" — so this was just a leftover label. "Серебро" (silver)
+                    // isn't used by any current game system at all and is dropped outright rather
+                    // than relabeled.
+                    LabeledContent("Кристаллы", value: "\(user.gold)")
                     LabeledContent("Очки арены", value: "\(user.arenaPoints)")
                 }
             }

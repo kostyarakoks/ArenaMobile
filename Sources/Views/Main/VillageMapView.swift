@@ -42,7 +42,22 @@ struct VillageMapView: View {
     @State private var renameText = ""
     @State private var renameError: String?
 
-    private static let queueDateFormatter = ISO8601DateFormatter()
+    // "строительство так и подвисает в незаконченых" — THE actual root cause, after three
+    // rounds of server-side fixes that were each real improvements but never the culprit: this
+    // formatter's default `.formatOptions` (`.withInternetDateTime`) can't parse fractional
+    // seconds, but Laravel's Eloquent `datetime` cast serializes Carbon timestamps to JSON as
+    // e.g. "2026-09-21T02:53:00.123456Z" — WITH microseconds — by default (`Carbon::toJSON()`).
+    // `date(from:)` on a string it can't parse returns `nil`, and the `guard let finishes = ...
+    // else { return false }` below silently treated every single tick as "not finished yet",
+    // forever — so this poll's `hasFinished` check could never fire, no matter how correct the
+    // server's own completion logic was. Adding `.withFractionalSeconds` is the fix; see also
+    // the identical formatter in FieldsMapView.swift and `ConstructionBadge`'s own formatter
+    // further down in this file, both hit the exact same bug for the same reason.
+    private static let queueDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     private var selectedVillageID: Int? { villageSession.selectedVillageID }
     private var detail: VillageDetail? { villageSession.detail }
@@ -397,7 +412,16 @@ struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
     var scale: CGFloat = 1
 
-    private static let formatter = ISO8601DateFormatter()
+    // Same fractional-seconds fix as `queueDateFormatter` above — without it, both `started`/
+    // `finishes` below silently fell back to `.now` (via `?? .now`) on every render, since
+    // parsing the server's "...000000Z"-style timestamp always failed, making `span` collapse
+    // to ~0 and the progress bar/countdown read as permanently "just finishing" instead of
+    // showing the real remaining time.
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     var body: some View {
         let started = Self.formatter.date(from: entry.startedAt) ?? .now
