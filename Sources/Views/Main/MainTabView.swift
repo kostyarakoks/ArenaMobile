@@ -44,29 +44,42 @@ struct MainTabView: View {
 
     var body: some View {
         // "область экрана должна быть разделена на три части: верх 1/7, низ 1/7, средняя часть
-        // 5/7" — an exact proportional split, not "whatever GameHeaderBar/bottomDock naturally
-        // measure out to" (the previous approach, which reserved exactly each bar's own content
-        // height — correct in the sense that content never sat BEHIND a bar, but not this exact
-        // 1/7 : 5/7 : 1/7 ratio the design calls for). RootView renders MainTabView directly
-        // with no GeometryReader of its own in between, so this one sees the true full-screen
-        // proposal — same property ZoomableMapContainer's own GeometryReader already relies on.
+        // 5/7" — an exact proportional split.
+        //
+        // Previously this used NavigationStack + .safeAreaInset(edge: .top/.bottom), which is the
+        // idiomatic SwiftUI way to hang bars off the edges — but that approach makes bars FLOAT
+        // over the content: a ScrollView/List inside the middle screen can scroll its rows
+        // underneath the bars (Apple's "translucent bars" look). The requirement here is the
+        // opposite: the middle content must NEVER sit behind either bar, it must live strictly
+        // in the 5/7 band between them.
+        //
+        // So the three pieces are now plain VStack neighbors (spacing: 0). Header and dock
+        // occupy their own fixed 1/7 each; the NavigationStack in the middle takes exactly what
+        // is left via .frame(maxHeight: .infinity). Nothing overlays anything, so nothing can
+        // slide under a bar.
         GeometryReader { screen in
             let barHeight = screen.size.height / 7
 
-            NavigationStack {
-                // `selectItem` lets a screen further down (currently WorldMapView, tapping your
-                // own village) switch the active tab itself — the native equivalent of the web
-                // app's router.visit(route('village.buildings', ...)) jump, since there's no
-                // URL/route to navigate to here, just this same @State this view already owns.
-                NavDestinationView(item: selected, selectItem: { selected = $0 })
-            }
-            // Global resources header — see GameHeaderBar's own doc comment for why this moved
-            // here from being VillageMapView's own private header. Forced to exactly `barHeight`
-            // (1/7 of the screen) rather than sized to its own content, per the spec above.
-            .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                // ── TOP: always at the top, fixed 1/7 height ───────────────────────
                 GameHeaderBar(selectItem: { selected = $0 }, height: barHeight)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+
+                // ── MIDDLE: exactly the remaining 5/7 ──────────────────────────────
+                NavigationStack {
+                    // `selectItem` lets a screen further down (currently WorldMapView, tapping
+                    // your own village) switch the active tab itself — the native equivalent of
+                    // the web app's router.visit(route('village.buildings', ...)) jump, since
+                    // there's no URL/route to navigate to here, just this same @State this view
+                    // already owns.
+                    NavDestinationView(item: selected, selectItem: { selected = $0 })
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Defensive: if a child screen tries to poke past its bounds (offset,
+                // transition, negative padding), it gets clipped here rather than eating into
+                // the bars above/below.
+                .clipped()
+
+                // ── BOTTOM: always at the bottom, fixed 1/7 height ─────────────────
                 bottomDock(height: barHeight)
             }
             .environmentObject(villageSession)
@@ -83,6 +96,8 @@ struct MainTabView: View {
                 }
             }
         }
+        // Keyboard must not squash the dock when a text field is focused.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     // Fixed row height, taller than the plain content needs — the icon row centers inside it
@@ -121,7 +136,9 @@ struct MainTabView: View {
         // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
         // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
         // gradient background so the native dock matches the web app's finished look exactly,
-        // not just an approximation of it.
+        // not just an approximation of it. .ignoresSafeArea(edges: .bottom) lets the texture
+        // bleed down through the home-indicator strip even inside the outer VStack — the dock
+        // itself stays inside the safe area, only its background extends past it.
         .background(
             Image("nav_bar_bg")
                 .resizable(resizingMode: .stretch)
