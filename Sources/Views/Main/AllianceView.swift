@@ -16,7 +16,7 @@ struct AllianceView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .withScreenTitle {
                 ScreenTitleBar("Альянс") {
                     if myAlliance == nil {
                         Button { showCreate = true } label: { Image(systemName: "plus").foregroundStyle(GameTheme.amber) }

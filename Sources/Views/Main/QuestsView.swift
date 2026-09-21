@@ -16,7 +16,7 @@ struct QuestsView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Задания") }
+            .withScreenTitle { ScreenTitleBar("Задания") }
             .task {
                 guard status == nil else { return }
                 await load()

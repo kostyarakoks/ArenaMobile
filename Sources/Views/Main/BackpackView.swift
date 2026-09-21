@@ -27,7 +27,7 @@ struct BackpackView: View {
     var body: some View {
         content
             .gameScreenBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Рюкзак") }
+            .withScreenTitle { ScreenTitleBar("Рюкзак") }
             .task {
                 guard response == nil else { return }
                 await load()

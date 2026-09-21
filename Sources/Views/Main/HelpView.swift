@@ -12,7 +12,7 @@ struct HelpView: View {
     var body: some View {
         content
             .gameScreenBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Помощь") }
+            .withScreenTitle { ScreenTitleBar("Помощь") }
             .task {
                 guard helpContent == nil else { return }
                 await load()

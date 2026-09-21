@@ -126,6 +126,29 @@ extension View {
     func gameNavBarHidden() -> some View {
         toolbar(.hidden, for: .navigationBar)
     }
+
+    /// "Мага зин" — the per-screen ScreenTitleBar (see its own doc comment) used to be attached
+    /// via `.safeAreaInset(edge: .top)`, same mechanism GameHeaderBar uses one level up in
+    /// MainTabView. That's TWO independent `.safeAreaInset(edge: .top)` reservations stacked
+    /// across a NavigationStack boundary — GameHeaderBar's, applied OUTSIDE the NavigationStack
+    /// in MainTabView, and each screen's own ScreenTitleBar inset, applied INSIDE content pushed
+    /// by that same NavigationStack (whose native bar is separately hidden via
+    /// `gameNavBarHidden()`). In practice the two didn't reliably stack: ScreenTitleBar rendered
+    /// overlapping GameHeaderBar's own space instead of directly below it (reported again after
+    /// three previous rounds already re-verified GameHeaderBar's own reservation was correct —
+    /// the bug was specifically in this SECOND, nested inset never being given its own distinct
+    /// slot). Plain `VStack` composition has no such ambiguity — the title bar and the content
+    /// below it are just two ordinary sibling views with deterministic sizes, nothing tries to
+    /// merge two safe-area reservations through a hidden-nav-bar NavigationStack. `.refreshable`/
+    /// `.task` chained after this (as every call site already does) still reaches the List/
+    /// ScrollView inside `content` — those propagate via the environment, not a direct-child
+    /// requirement, the same way they already worked when chained after `.safeAreaInset` before.
+    func withScreenTitle<Title: View>(@ViewBuilder title: () -> Title) -> some View {
+        VStack(spacing: 0) {
+            title()
+            self
+        }
+    }
 }
 
 /// Mirrors `.tv-btn` — the amber gradient primary action button used everywhere on the web

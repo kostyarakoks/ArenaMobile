@@ -16,7 +16,7 @@ struct MessagesView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .withScreenTitle {
                 ScreenTitleBar("Сообщения") {
                     Button { showCompose = true } label: { Image(systemName: "square.and.pencil") }
                         .foregroundStyle(GameTheme.amber)

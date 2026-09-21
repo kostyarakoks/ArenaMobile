@@ -19,7 +19,7 @@ struct MarketView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .withScreenTitle {
                 ScreenTitleBar(detail?.village.name.isEmpty == false ? "Рынок — \(detail!.village.name)" : "Рынок") {
                     if villages.count > 1 {
                         Menu {

@@ -16,7 +16,7 @@ struct ResearchView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Исследования") }
+            .withScreenTitle { ScreenTitleBar("Исследования") }
             .task {
                 guard detail == nil else { return }
                 await load()

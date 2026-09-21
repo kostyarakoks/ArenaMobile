@@ -13,7 +13,7 @@ struct TechTreeView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Технологии") }
+            .withScreenTitle { ScreenTitleBar("Технологии") }
             .task {
                 guard response == nil else { return }
                 await load()

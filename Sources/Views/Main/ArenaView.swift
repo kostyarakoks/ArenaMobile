@@ -14,7 +14,7 @@ struct ArenaView: View {
     var body: some View {
         content
             .gameScreenBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Арена") }
+            .withScreenTitle { ScreenTitleBar("Арена") }
             .task {
                 guard detail == nil else { return }
                 await load()

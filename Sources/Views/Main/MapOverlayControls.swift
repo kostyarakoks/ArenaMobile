@@ -31,6 +31,28 @@ struct MapOverlayControls: View {
     var selectItem: (NavItem) -> Void = { _ in }
 
     var body: some View {
+        // "карта тоже скрывается под хедером и футером" (this round: the icon rail's bottom-most
+        // button rendering under/behind the bottom dock) — placing this stack via a plain
+        // `.overlay(alignment: .trailing)` at the call site centers it vertically within
+        // whatever frame that call site's own outer view resolved to, and (same root cause
+        // ZoomableMapContainer's own doc comment already covers for the map canvas itself)
+        // there's no guarantee that frame was actually the safe sub-rect rather than the full
+        // screen bounds — centering against the taller one pushes the last button below the real
+        // safe bottom edge. Wrapping in a GeometryReader and subtracting `.safeAreaInsets`
+        // explicitly, the same technique ZoomableMapContainer already uses, sidesteps the
+        // question entirely: if the ambient proposal was already safe-sized this is a no-op
+        // (insets read as ~0); if it wasn't, this still lands the stack in the true safe area.
+        GeometryReader { outer in
+            let safeHeight = max(0, outer.size.height - outer.safeAreaInsets.top - outer.safeAreaInsets.bottom)
+            buttonStack
+                .position(
+                    x: outer.size.width - outer.safeAreaInsets.trailing - 22,
+                    y: outer.safeAreaInsets.top + safeHeight / 2
+                )
+        }
+    }
+
+    private var buttonStack: some View {
         VStack(spacing: 10) {
             villageSwitcher
             // "кнопку «поля» вынести из общего в карту, таже добавить сами поля" — used to sit

@@ -84,7 +84,7 @@ private struct PlaceholderScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gameScreenBackground()
-        .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar(item.label) }
+        .withScreenTitle { ScreenTitleBar(item.label) }
     }
 }
 
@@ -122,7 +122,7 @@ private struct ProfileScreen: View {
             }
         }
         .gameListBackground()
-        .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Профиль") }
+        .withScreenTitle { ScreenTitleBar("Профиль") }
     }
 }
 

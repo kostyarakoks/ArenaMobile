@@ -18,7 +18,7 @@ struct RallyPointView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .withScreenTitle {
                 ScreenTitleBar("Площадь сбора") {
                     Button("Обучение") { showTrain = true }
                         .foregroundStyle(GameTheme.amber)

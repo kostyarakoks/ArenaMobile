@@ -14,7 +14,7 @@ struct ShopView: View {
     var body: some View {
         content
             .gameListBackground()
-            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Магазин") }
+            .withScreenTitle { ScreenTitleBar("Магазин") }
             .task {
                 guard detail == nil else { return }
                 await load()
