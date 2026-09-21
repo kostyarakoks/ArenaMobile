@@ -95,6 +95,37 @@ extension View {
     func gameScreenBackground() -> some View {
         background(GameTheme.background.ignoresSafeArea())
     }
+
+    /// "убрать везде черный бэкграунд, везде должен быть одинаковый" — a `List` (especially
+    /// `.insetGrouped`, UICollectionView-backed since iOS 16) paints its OWN opaque background
+    /// underneath every row, which `configureGlobalAppearance()`'s `UITableView.appearance()`/
+    /// `UITableViewCell.appearance()` proxies (above) don't reliably reach on that newer
+    /// backing store — it fell back to system `.systemGroupedBackground`, which reads as plain
+    /// black in dark mode (this app forces `.preferredColorScheme(.dark)`), instead of the
+    /// game's actual navy. `.scrollContentBackground(.hidden)` turns the List's own background
+    /// off so the explicit navy `.background()` underneath it (gameScreenBackground) can show
+    /// through — apply this to every List-rooted screen instead of relying on the appearance
+    /// proxies alone.
+    func gameListBackground() -> some View {
+        self
+            .scrollContentBackground(.hidden)
+            .gameScreenBackground()
+    }
+
+    /// "часть скрыта под баром / так же скрывается под хедером" — every screen pushed inside
+    /// MainTabView's NavigationStack sits between two pieces of CUSTOM chrome (GameHeaderBar via
+    /// `.safeAreaInset(edge: .top)`, the bottom dock via `.safeAreaInset(edge: .bottom)`), not
+    /// the system's own. Left alone, `.navigationTitle(...)` still makes NavigationStack render
+    /// its OWN native UINavigationBar too — a second bar stacking with/overlapping GameHeaderBar
+    /// (reported as garbled/doubled title text), and the extra unaccounted-for bar height also
+    /// throws off how much space that screen's own List/ScrollView thinks it has for the bottom
+    /// dock, so the last row(s) render clipped behind it. Hiding the native bar is the same fix
+    /// VillageMapView/WorldMapView/FieldsMapView already apply individually (their own
+    /// `.toolbar(.hidden, for: .navigationBar)`) — this is the same call, just reusable so every
+    /// OTHER screen (Shop, Messages, Reports, …) gets it too instead of only the three maps.
+    func gameNavBarHidden() -> some View {
+        toolbar(.hidden, for: .navigationBar)
+    }
 }
 
 /// Mirrors `.tv-btn` — the amber gradient primary action button used everywhere on the web

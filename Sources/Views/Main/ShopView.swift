@@ -13,7 +13,8 @@ struct ShopView: View {
 
     var body: some View {
         content
-            .navigationTitle("Магазин")
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Магазин") }
             .task {
                 guard detail == nil else { return }
                 await load()

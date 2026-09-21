@@ -15,11 +15,11 @@ struct AllianceView: View {
 
     var body: some View {
         content
-            .navigationTitle("Альянс")
-            .toolbar {
-                if myAlliance == nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { showCreate = true } label: { Image(systemName: "plus") }
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ScreenTitleBar("Альянс") {
+                    if myAlliance == nil {
+                        Button { showCreate = true } label: { Image(systemName: "plus").foregroundStyle(GameTheme.amber) }
                     }
                 }
             }

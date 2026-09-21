@@ -68,12 +68,34 @@ struct ZoomableMapContainer<Content: View>: View {
 
     var body: some View {
         GeometryReader { outer in
-            let base = baseSize(for: outer.size)
+            // "карта тоже скрывается под хедером и футером" — GeometryReader reports its FULL
+            // proposed size in `.size` regardless of any ancestor `.safeAreaInset` (MainTabView
+            // reserves GameHeaderBar/bottomDock that way); it only tells you about that reserved
+            // space separately, via `.safeAreaInsets`, and leaves subtracting it up to you. The
+            // previous round's fixes (contentInsetAdjustmentBehavior, scrollViewDidZoom offset
+            // clamping) both assumed this view was "already confined below the header / above
+            // the dock" and only ever touched pan/zoom offset — never this root sizing — so the
+            // map's actual viewport (and everything positioned inside it, incl. the village name
+            // plate) kept being sized to the FULL screen and rendering straight under both bars
+            // even at rest. Subtracting the insets here is safe even if some future SwiftUI
+            // version DOES pre-shrink `.size` — insets would just read as ~0 and this is a no-op.
+            let safeSize = CGSize(
+                width: max(0, outer.size.width - outer.safeAreaInsets.leading - outer.safeAreaInsets.trailing),
+                height: max(0, outer.size.height - outer.safeAreaInsets.top - outer.safeAreaInsets.bottom)
+            )
+            let base = baseSize(for: safeSize)
             // `base` is the content's size AT ZOOM 1 — UIScrollView's own zoomScale (minZoom...
             // maxZoom) handles everything beyond that natively; unlike the old code, nothing here
             // multiplies this by a live zoom value.
             PinchZoomScrollView(minZoom: minZoom, maxZoom: maxZoom, contentSize: CGSize(width: base.width, height: base.height), initialCenterFraction: initialCenterFraction, content: content)
-                .frame(width: outer.size.width, height: outer.size.height)
+                .frame(width: safeSize.width, height: safeSize.height)
+                // GeometryReader also PLACES itself across the full region (it's the one view
+                // that greedily fills everything offered to it, safe area included) — shrinking
+                // just the size above would otherwise leave this new, smaller frame still pinned
+                // to the GeometryReader's own top-left corner, which itself starts underneath the
+                // header. `.position` re-centers it inside the actual safe sub-rectangle instead
+                // (top-left at (leading, top) insets, sized safeSize).
+                .position(x: outer.safeAreaInsets.leading + safeSize.width / 2, y: outer.safeAreaInsets.top + safeSize.height / 2)
         }
     }
 }

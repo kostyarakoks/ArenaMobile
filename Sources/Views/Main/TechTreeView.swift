@@ -12,7 +12,8 @@ struct TechTreeView: View {
 
     var body: some View {
         content
-            .navigationTitle("Технологии")
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Технологии") }
             .task {
                 guard response == nil else { return }
                 await load()

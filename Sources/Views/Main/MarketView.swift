@@ -18,10 +18,10 @@ struct MarketView: View {
 
     var body: some View {
         content
-            .navigationTitle(detail?.village.name.isEmpty == false ? "Рынок — \(detail!.village.name)" : "Рынок")
-            .toolbar {
-                if villages.count > 1 {
-                    ToolbarItem(placement: .topBarTrailing) {
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ScreenTitleBar(detail?.village.name.isEmpty == false ? "Рынок — \(detail!.village.name)" : "Рынок") {
+                    if villages.count > 1 {
                         Menu {
                             ForEach(villages) { village in
                                 Button(village.name) {
@@ -29,7 +29,7 @@ struct MarketView: View {
                                     Task { await load() }
                                 }
                             }
-                        } label: { Image(systemName: "list.bullet") }
+                        } label: { Image(systemName: "list.bullet").foregroundStyle(GameTheme.amber) }
                     }
                 }
             }

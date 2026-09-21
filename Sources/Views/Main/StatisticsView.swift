@@ -13,7 +13,8 @@ struct StatisticsView: View {
 
     var body: some View {
         content
-            .navigationTitle("Статистика")
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Статистика") }
             .task {
                 guard response == nil else { return }
                 await load()

@@ -17,10 +17,11 @@ struct RallyPointView: View {
 
     var body: some View {
         content
-            .navigationTitle("Площадь сбора")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ScreenTitleBar("Площадь сбора") {
                     Button("Обучение") { showTrain = true }
+                        .foregroundStyle(GameTheme.amber)
                 }
             }
             .task {

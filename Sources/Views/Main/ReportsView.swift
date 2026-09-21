@@ -12,7 +12,8 @@ struct ReportsView: View {
 
     var body: some View {
         content
-            .navigationTitle("Отчёты")
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Отчёты") }
             .task {
                 guard reports.isEmpty else { return }
                 await load()

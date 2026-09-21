@@ -11,7 +11,8 @@ struct HelpView: View {
 
     var body: some View {
         content
-            .navigationTitle("Помощь")
+            .gameScreenBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Помощь") }
             .task {
                 guard helpContent == nil else { return }
                 await load()

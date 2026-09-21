@@ -15,10 +15,11 @@ struct MessagesView: View {
 
     var body: some View {
         content
-            .navigationTitle("Сообщения")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ScreenTitleBar("Сообщения") {
                     Button { showCompose = true } label: { Image(systemName: "square.and.pencil") }
+                        .foregroundStyle(GameTheme.amber)
                 }
             }
             .task {

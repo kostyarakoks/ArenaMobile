@@ -14,7 +14,8 @@ struct CommandersView: View {
 
     var body: some View {
         content
-            .navigationTitle("Полководцы")
+            .gameListBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Полководцы") }
             .task {
                 guard collection == nil else { return }
                 await load()

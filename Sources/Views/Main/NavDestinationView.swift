@@ -15,48 +15,57 @@ struct NavDestinationView: View {
     var selectItem: ((NavItem) -> Void)? = nil
 
     var body: some View {
-        switch item.id {
-        case "profile":
-            ProfileScreen()
-        case "village":
-            VillageMapView(selectItem: { selectItem?($0) })
-        case "map":
-            WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
-        case "fields":
-            FieldsMapView(selectItem: { selectItem?($0) })
-        case "hero":
-            HeroView()
-        case "market":
-            MarketView()
-        case "alliance":
-            AllianceView()
-        case "shop":
-            ShopView()
-        case "rally_point":
-            RallyPointView()
-        case "commanders":
-            CommandersView()
-        case "arena":
-            ArenaView()
-        case "backpack":
-            BackpackView()
-        case "reports":
-            ReportsView()
-        case "messages":
-            MessagesView()
-        case "research":
-            ResearchView()
-        case "tech_tree":
-            TechTreeView()
-        case "statistics":
-            StatisticsView()
-        case "quests":
-            QuestsView()
-        case "help":
-            HelpView()
-        default:
-            PlaceholderScreen(item: item)
+        // "так же скрывается под хедером" — wrapped in a Group so ONE `.gameNavBarHidden()`
+        // (see GameTheme.swift's own doc comment) covers every branch below, instead of each of
+        // the 18+ screens needing to remember to hide the native bar individually the way only
+        // the three map screens used to. The four screens that had a REAL action button living
+        // in that native bar (MarketView, AllianceView, RallyPointView, MessagesView) now render
+        // their own in-content ScreenTitleBar instead — see each of those files.
+        Group {
+            switch item.id {
+            case "profile":
+                ProfileScreen()
+            case "village":
+                VillageMapView(selectItem: { selectItem?($0) })
+            case "map":
+                WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
+            case "fields":
+                FieldsMapView(selectItem: { selectItem?($0) })
+            case "hero":
+                HeroView()
+            case "market":
+                MarketView()
+            case "alliance":
+                AllianceView()
+            case "shop":
+                ShopView()
+            case "rally_point":
+                RallyPointView()
+            case "commanders":
+                CommandersView()
+            case "arena":
+                ArenaView()
+            case "backpack":
+                BackpackView()
+            case "reports":
+                ReportsView()
+            case "messages":
+                MessagesView()
+            case "research":
+                ResearchView()
+            case "tech_tree":
+                TechTreeView()
+            case "statistics":
+                StatisticsView()
+            case "quests":
+                QuestsView()
+            case "help":
+                HelpView()
+            default:
+                PlaceholderScreen(item: item)
+            }
         }
+        .gameNavBarHidden()
     }
 }
 
@@ -75,7 +84,7 @@ private struct PlaceholderScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gameScreenBackground()
-        .navigationTitle(item.label)
+        .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar(item.label) }
     }
 }
 
@@ -105,7 +114,8 @@ private struct ProfileScreen: View {
                 }
             }
         }
-        .navigationTitle("Профиль")
+        .gameListBackground()
+        .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Профиль") }
     }
 }
 

@@ -24,7 +24,8 @@ struct HeroView: View {
 
     var body: some View {
         content
-            .navigationTitle("Герой")
+            .gameScreenBackground()
+            .safeAreaInset(edge: .top, spacing: 0) { ScreenTitleBar("Герой") }
             .task {
                 guard detail == nil else { return }
                 await load()
