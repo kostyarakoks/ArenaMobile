@@ -43,10 +43,10 @@ struct ZoomableMapContainer<Content: View>: View {
     // old top-left-origin behaviour (WorldMapView doesn't have a single "main" point to center on).
     var initialCenterFraction: CGPoint?
 
-    // "нельзя уменьшить карту, меньше чем окно по вертикали" — was hard-pinned at 1 (== "fits the
-    // window exactly, no smaller"), so `minimumZoomScale` never allowed pinching out past that.
-    // 0.5 lets the player shrink the whole map to half size, well below the window on both axes.
-    init(minZoom: CGFloat = 0.5, maxZoom: CGFloat = 3, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
+    // ИЗМЕНЕНО: minZoom теперь по умолчанию 1.0 (карта ровно вписывается в экран,
+    // нельзя уменьшить меньше размера картинки), maxZoom 2.0 (максимальное увеличение х2).
+    // Ранее minZoom был 0.5, что позволяло уменьшать карту сильнее, чем нужно.
+    init(minZoom: CGFloat = 1.0, maxZoom: CGFloat = 2.0, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
         self.contentAspect = contentAspect
@@ -122,13 +122,10 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
-        // Was `scrollView.zoomScale = minZoom` — harmless while minZoom was hard-pinned at 1,
-        // but now that minZoom can go below 1 (see init's own comment), that line would have
-        // made the map open ALREADY zoomed out small by default instead of at a sensible "fits
-        // the window" starting point. The lower bound and the starting point are two different
-        // concerns: `minimumZoomScale` is how far the player CAN pinch out; the starting zoom
-        // should stay 1 regardless (clamped into [minZoom, maxZoom] just in case a future call
-        // site ever passes a range that doesn't include 1).
+        // ИЗМЕНЕНО: при minZoom = 1.0 и maxZoom = 2.0 начальный зум будет ровно 1.0.
+        // Ранее здесь было `scrollView.zoomScale = minZoom`, что при minZoom = 0.5
+        // заставляло карту открываться уже уменьшенной. Теперь карта всегда открывается
+        // в масштабе 1.0 (ровно по размеру экрана).
         scrollView.zoomScale = min(max(1, minZoom), maxZoom)
         scrollView.bouncesZoom = true
         scrollView.showsHorizontalScrollIndicator = false
