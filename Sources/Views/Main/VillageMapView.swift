@@ -16,6 +16,10 @@ import SwiftUI
 ///    build/upgrade actions (Api\VillageController::slotAction(), same BuildingService the web
 ///    app uses) including "finish instantly for 💎";
 ///  - pinch-to-zoom + pan on the map itself (native equivalent of ZoomableMap.vue).
+///
+/// ОБНОВЛЕНО: village name + tier badge теперь передаются в ZoomableMapContainer через новый
+/// параметр `overlay` — они рендерятся ПОВЕРХ карты и НЕ зумируются/не панорамируются вместе
+/// с ней. Раньше они были внутри `content` и уезжали/растягивались при любом жесте.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     // Active-village state lives here now (see VillageSession.swift) — shared with the global
@@ -267,32 +271,62 @@ struct VillageMapView: View {
         let initialCenterFraction: CGPoint? = coordsBySlot[mainBuildingSlot].map {
             CGPoint(x: $0.cx / width, y: $0.cy / height)
         }
-        return ZoomableMapContainer(contentAspect: CGFloat(width / height), initialCenterFraction: initialCenterFraction) {
-            // One GeometryReader for the whole canvas — its `geo.size` is the actual rendered
-            // pixel size (which changes with pinch-zoom), so both the glow and the marker
-            // positions scale off the SAME real size instead of the raw viewbox numbers.
-            GeometryReader { geo in
-                let scaleX = geo.size.width / width
-                let scaleY = geo.size.height / height
 
-                ZStack {
-                    // No corner rounding/border here on purpose — the map now fills the screen
-                    // edge to edge between the nav bar and the bottom dock ("карту на весь
-                    // экран"), so a rounded card frame would just clip corners against the
-                    // screen's own edges instead of reading as a card.
-                    backgroundImage(path: backgroundPath)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+        // ОБНОВЛЕНО: minZoom: 1.0 — карта не уменьшается меньше размера картинки.
+        // maxZoom: 2.0 — максимальное увеличение ровно ×2.
+        // Overlay: тир-бейдж + название деревни + карандаш — рендерятся ПОВЕРХ карты
+        // и НЕ зумируются вместе с ней (см. ZoomableMapContainer.overlay).
+        return ZoomableMapContainer(
+            minZoom: 1.0,
+            maxZoom: 2.0,
+            contentAspect: CGFloat(width / height),
+            initialCenterFraction: initialCenterFraction,
+            content: {
+                // Внутри content — ТОЛЬКО карта и маркеры зданий. Всё это зумится и панорамируется.
+                GeometryReader { geo in
+                    let scaleX = geo.size.width / width
+                    let scaleY = geo.size.height / height
 
-                    // Warm glow behind the main building (slot 8, centred on the classic
-                    // canvas) — same cosmetic touch Buildings.vue draws behind its own hub slot.
-                    RadialGradient(
-                        colors: [Color(red: 1, green: 0.77, blue: 0.42).opacity(0.35), Color(red: 1, green: 0.71, blue: 0.33).opacity(0)],
-                        center: .center, startRadius: 1, endRadius: max(geo.size.width, geo.size.height) * 0.22
-                    )
-                    .frame(width: geo.size.width * 0.46, height: geo.size.height * 0.46)
-                    .allowsHitTesting(false)
+                    ZStack {
+                        // No corner rounding/border here on purpose — the map now fills the screen
+                        // edge to edge between the nav bar and the bottom dock ("карту на весь
+                        // экран"), so a rounded card frame would just clip corners against the
+                        // screen's own edges instead of reading as a card.
+                        backgroundImage(path: backgroundPath)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
 
+                        // Warm glow behind the main building (slot 8, centred on the classic
+                        // canvas) — same cosmetic touch Buildings.vue draws behind its own hub slot.
+                        RadialGradient(
+                            colors: [Color(red: 1, green: 0.77, blue: 0.42).opacity(0.35), Color(red: 1, green: 0.71, blue: 0.33).opacity(0)],
+                            center: .center, startRadius: 1, endRadius: max(geo.size.width, geo.size.height) * 0.22
+                        )
+                        .frame(width: geo.size.width * 0.46, height: geo.size.height * 0.46)
+                        .allowsHitTesting(false)
+
+                        // scaleX and scaleY are mathematically equal here (ZoomableMapContainer's
+                        // contentAspect keeps both axes multiplied by the very same effectiveZoom
+                        // factor — see its own doc comment), so either would do; min() is just a
+                        // defensive guard against the two drifting apart from float rounding, so a
+                        // marker's own art never gets stretched non-uniformly.
+                        let markerScale = min(scaleX, scaleY)
+                        ForEach(coordsBySlot.keys.sorted(), id: \.self) { slot in
+                            if let coord = coordsBySlot[slot] {
+                                plotMarker(slot: slot, building: buildingsBySlot[slot], queueEntry: queueBySlot[slot], scale: markerScale)
+                                    .position(x: coord.cx * scaleX, y: coord.cy * scaleY)
+                            }
+                        }
+                    }
+                }
+            },
+            overlay: {
+                // Overlay-слой: тир-бейдж и название деревни. Всегда поверх карты,
+                // НЕ участвует в жестах UIScrollView, размер/позиция на экране неизменны
+                // при любом zoomScale. Позиционируем через .frame + .alignment: .topLeading
+                // (вместо .position(x:y:) — так как теперь это отдельный слой, а не ZStack
+                // внутри карты).
+                VStack(alignment: .leading, spacing: 4) {
                     // Village tier badge (Поселение/Деревня/Город/Мегаполис).
                     if let tierLabel = detail.village.tierLabel, !tierLabel.isEmpty {
                         Text(tierLabel)
@@ -302,7 +336,6 @@ struct VillageMapView: View {
                             .padding(.vertical, 4)
                             .background(Color.black.opacity(0.6))
                             .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .position(x: 46, y: 16)
                     }
 
                     // Village name + rename pencil, right below the tier badge — see
@@ -328,23 +361,22 @@ struct VillageMapView: View {
                     .padding(.vertical, 3)
                     .background(Color.black.opacity(0.6))
                     .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .position(x: 46, y: 40)
 
-                    // scaleX and scaleY are mathematically equal here (ZoomableMapContainer's
-                    // contentAspect keeps both axes multiplied by the very same effectiveZoom
-                    // factor — see its own doc comment), so either would do; min() is just a
-                    // defensive guard against the two drifting apart from float rounding, so a
-                    // marker's own art never gets stretched non-uniformly.
-                    let markerScale = min(scaleX, scaleY)
-                    ForEach(coordsBySlot.keys.sorted(), id: \.self) { slot in
-                        if let coord = coordsBySlot[slot] {
-                            plotMarker(slot: slot, building: buildingsBySlot[slot], queueEntry: queueBySlot[slot], scale: markerScale)
-                                .position(x: coord.cx * scaleX, y: coord.cy * scaleY)
-                        }
-                    }
+                    Spacer()
                 }
+                // Прижимаем к верхнему-левому углу safe-area. Поскольку overlay рендерится
+                // уже ВНУТРИ safeSize (ZoomableMapContainer вычёл safeAreaInsets), здесь
+                // можно использовать просто padding.
+                .padding(.leading, 12)
+                .padding(.top, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // Не перехватываем тапы по пустому пространству — только сами элементы
+                // (карандаш) должны реагировать на нажатие, остальное прокидываем на карту.
+                // Если вы хотите, чтобы ЛЮБОЙ тап по области тир-бейджа НЕ проваливался на
+                // карту, навесьте .allowsHitTesting(true) на конкретный бейдж/строку.
+                .allowsHitTesting(true)
             }
-        }
+        )
     }
 
     // Local asset (bundled by build_ios_assets.py) when this is one of the 4 classic
