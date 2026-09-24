@@ -3,7 +3,6 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var session: AuthSession
 
-    @State private var nickname = ""
     @State private var tribe = "roman"
 
     private let tribes: [(key: String, label: String, asset: String)] = [
@@ -13,7 +12,7 @@ struct LoginView: View {
     ]
 
     private var canPlay: Bool {
-        !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !session.isSubmitting
     }
 
     var body: some View {
@@ -28,19 +27,7 @@ struct LoginView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 220)
-                    .padding(.top, 40)
-
-                // Поле никнейма
-                TextField("Никнейм", text: $nickname)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(14)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(.white)
-                    .tint(.white)
-                    .padding(.top, 24)
-                    .padding(.horizontal, 28)
+                    .padding(.top, 60)
 
                 Spacer()
 
@@ -58,22 +45,28 @@ struct LoginView: View {
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .frame(height: 400)
 
+                // Название выбранного племени
+                if let current = tribes.first(where: { $0.key == tribe }) {
+                    Text(current.label)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.top, 4)
+                }
+
                 Spacer()
 
                 // Кнопка «Играть»
                 Button {
                     Task {
-                        await session.register(
-                            name: nickname.trimmingCharacters(in: .whitespacesAndNewlines),
-                            tribe: tribe
-                        )
+                        await session.register(tribe: tribe)
                     }
                 } label: {
-                    HStack {
+                    HStack(spacing: 8) {
                         if session.isSubmitting {
                             ProgressView().tint(.black)
                         }
-                        Text("Играть").fontWeight(.semibold)
+                        Text(session.isSubmitting ? "Создание аккаунта…" : "Играть")
+                            .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -81,7 +74,7 @@ struct LoginView: View {
                 .background(canPlay ? Color(red: 1, green: 0.84, blue: 0.47) : Color.white.opacity(0.25))
                 .foregroundStyle(canPlay ? .black : .white.opacity(0.6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .disabled(!canPlay || session.isSubmitting)
+                .disabled(!canPlay)
 
                 if let error = session.errorMessage {
                     Text(error)
@@ -93,6 +86,11 @@ struct LoginView: View {
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 20)
+        }
+        .onAppear {
+            // Сбрасываем isSubmitting/errorMessage, если они залипли
+            // после прошлой неудачной попытки.
+            session.resetTransientState()
         }
     }
 }

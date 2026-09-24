@@ -67,22 +67,19 @@ final class APIClient {
     }
 
     private struct RegisterBody: Encodable {
-        let name: String
         let tribe: String
         let device_name: String
     }
 
-    /// POST /api/register — регистрация по никнейму. Игрок вводит ник,
-    /// выбирает племя, тапает «Играть». Сервер сам генерирует email и
-    /// пароль, возвращает bearer-токен — единственный креденшл впредь.
+    /// POST /api/register — instant-play регистрация. Ник НЕ передаём:
+    /// сервер сам сгенерирует "Игрок id{ID}" (users.id монотонно растёт,
+    /// поэтому ник уникален). Отправляем только выбранное племя.
     func register(
-        name: String,
         tribe: String,
         deviceName: String
     ) async throws -> (token: String, user: GameUser) {
         var request = try makeRequest(path: "/api/register", method: "POST")
         let body = RegisterBody(
-            name: name,
             tribe: tribe,
             device_name: deviceName
         )

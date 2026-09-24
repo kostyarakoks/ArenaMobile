@@ -8,8 +8,8 @@ enum AuthPhase {
     case signedIn
 }
 
-/// Глобальное состояние авторизации. Регистрация — по никнейму,
-/// Game Center не используется.
+/// Глобальное состояние авторизации. Регистрация — instant-play:
+/// клиент отправляет только племя, ник генерирует сервер ("Игрок id{ID}").
 @MainActor
 final class AuthSession: ObservableObject {
     @Published private(set) var bearerToken: String?
@@ -24,22 +24,24 @@ final class AuthSession: ObservableObject {
         phase = bearerToken == nil ? .signedOut : .loading
     }
 
-    /// Регистрация по никнейму и племени. Сервер сам генерирует email и
-    /// пароль, возвращает bearer-токен.
-    func register(name: String, tribe: String) async {
+    /// Сбросить временное состояние UI. Вызывается из LoginView.onAppear,
+    /// чтобы кнопка «Играть» не оставалась серой после залипшего запроса.
+    func resetTransientState() {
+        isSubmitting = false
+        errorMessage = nil
+    }
+
+    /// Регистрация instant-play. Ник НЕ передаём — сервер сам сгенерирует
+    /// "Игрок id{ID}", где {ID} = users.id. Клиент отправляет только племя.
+    func register(tribe: String) async {
+        guard !isSubmitting else { return }
+
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
 
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            errorMessage = "Введите никнейм."
-            return
-        }
-
         do {
             let response = try await APIClient.shared.register(
-                name: trimmed,
                 tribe: tribe,
                 deviceName: "ArenaMobile iOS"
             )
@@ -55,6 +57,8 @@ final class AuthSession: ObservableObject {
     }
 
     func login(email: String, password: String) async {
+        guard !isSubmitting else { return }
+
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
