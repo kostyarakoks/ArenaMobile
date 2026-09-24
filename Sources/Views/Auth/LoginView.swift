@@ -3,8 +3,7 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var session: AuthSession
 
-    // Instant-play fields
-    // Никнейм убран — сервер сам сгенерирует/примет дефолтное имя (Api\AuthController::register).
+    // Никнейм убран — сервер сам сгенерирует дефолтное имя (Api\AuthController::register).
     // Остаётся только выбор племени через слайдер с картинками.
     @State private var tribe = "roman" // Значение по умолчанию
 
@@ -23,72 +22,74 @@ struct LoginView: View {
             )
             .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 30) {
-                    // Логотип — сдвинут вверх, чтобы дать место увеличенным персонажам.
-                    Image("Logo")
+            VStack(spacing: 0) {
+                // Логотип
+                Image("Logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 240)
+                    .padding(.top, 60) // Отступ от верхнего края (Safe Area)
+
+                Spacer() // ОТСТУП: сдвигает персонажа и подиум вниз
+
+                // Блок "подиум + персонаж"
+                ZStack(alignment: .bottom) {
+                    // Подиум (один на всех). Убедитесь, что картинка добавлена в
+                    // Assets.xcassets как "Podium" (PNG с прозрачным фоном).
+                    Image("Podium")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 240)
-                        .padding(.top, 40)
+                        .frame(width: 300)
+                        // ИЗМЕНЕНО: подиум сдвинут ниже (было 20, стало 40)
+                        .offset(y: 40)
 
-                    // Блок "подиум + персонаж":
-                    // ZStack(alignment: .bottom) прижимает оба слоя к низу своего фрейма,
-                    // поэтому персонаж стоит ровно на подиуме, а TabView листается
-                    // горизонтально поверх подиума.
-                    ZStack(alignment: .bottom) {
-                        // Подиум (один на всех). Убедитесь, что картинка добавлена в
-                        // Assets.xcassets как "Podium" (PNG с прозрачным фоном).
-                        Image("Podium")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 300)
-                            .offset(y: 20) // Смещение вниз, чтобы ноги персонажа касались подиума
-
-                        // Слайдер персонажей. indexDisplayMode: .never — убраны точки-индикаторы.
-                        TabView(selection: $tribe) {
-                            ForEach(tribes, id: \.key) { option in
-                                Image(option.key)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 260) // Увеличенный размер персонажа
-                                    .offset(y: -20) // Приподнят над подиумом
-                                    .tag(option.key) // Привязка тега к значению tribe
-                            }
+                    // Слайдер персонажей. indexDisplayMode: .never — убраны точки-индикаторы.
+                    TabView(selection: $tribe) {
+                        ForEach(tribes, id: \.key) { option in
+                            Image(option.key)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 260) // Увеличенный размер персонажа
+                                // ИЗМЕНЕНО: персонаж опущен, чтобы встать на сдвинутый подиум
+                                .offset(y: 0)
+                                .tag(option.key)
                         }
-                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                        .frame(height: 300) // Высота слайдера
                     }
-                    .frame(height: 320) // Общая высота блока с подиумом и персонажем
-
-                    // Кнопка "Играть". Никнейм убран — регистрируемся как "Игрок".
-                    Button {
-                        Task { await session.register(name: "Игрок", tribe: tribe) }
-                    } label: {
-                        HStack {
-                            if session.isSubmitting {
-                                ProgressView().tint(.black)
-                            }
-                            Text("Играть").fontWeight(.semibold)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                    }
-                    .background(Color(red: 1, green: 0.84, blue: 0.47)) // Всегда активна, поля для ввода нет
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .disabled(session.isSubmitting)
-
-                    if let error = session.errorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red.opacity(0.9))
-                            .multilineTextAlignment(.center)
-                    }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                    .frame(height: 300) // Высота слайдера
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 40)
+                .frame(height: 320) // Общая высота блока с подиумом и персонажем
+
+                Spacer() // ОТСТУП: прижимает кнопку "Играть" к самому низу экрана
+
+                // Кнопка "Играть"
+                Button {
+                    Task { await session.register(name: "Игрок", tribe: tribe) }
+                } label: {
+                    HStack {
+                        if session.isSubmitting {
+                            ProgressView().tint(.black)
+                        }
+                        Text("Играть").fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                }
+                .background(Color(red: 1, green: 0.84, blue: 0.47))
+                .foregroundStyle(.black)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .disabled(session.isSubmitting)
+
+                if let error = session.errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 8)
+                }
             }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 20) // Отступ от нижнего края (Safe Area / Home Indicator)
         }
     }
 }
