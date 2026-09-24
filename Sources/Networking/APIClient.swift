@@ -29,12 +29,6 @@ enum APIError: LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    /// Used to be a per-install setting typed into a "server address" field on the login screen
-    /// (persisted under this same UserDefaults key) — removed per "убрать при регистрации адрес
-    /// сервера, его надо сделать постоянным, пока сервер https://game.playstation-code.com": for
-    /// now there's exactly one server, so it's a plain constant instead of something every player
-    /// has to type in correctly before they can even register. Bumping to a different server (or
-    /// back to a configurable one) is a one-line change here, not a client-facing setting.
     static let baseURLDefaultsKey = "api.baseURL"
     static let defaultServerURLString = "https://arenaoflords.ru"
 
