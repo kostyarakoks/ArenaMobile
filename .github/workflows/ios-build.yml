@@ -46,9 +46,17 @@ jobs:
         # clang's diagnostic output isn't flushed the way plain console output is) are never
         # lost: the "Show the actual error on failure" step below prints them explicitly, and
         # the full file is also uploaded as its own artifact regardless.
+        #
+        # `stdbuf -oL -eL` (from coreutils, preinstalled on macos runners) forces xcodebuild's
+        # stdout and stderr to be line-buffered rather than fully buffered. Without it, when
+        # xcodebuild's output is piped through `tee`, glibc/BSD libc switch to block buffering,
+        # and the last chunk of output (the actual error lines) can still be sitting in the
+        # buffer when the process exits — which is precisely why the CI log the user pasted
+        # ended mid-`actool`, with the real Swift compile errors nowhere to be seen even
+        # though build.log itself probably had them.
         run: |
           set -o pipefail
-          xcodebuild \
+          stdbuf -oL -eL xcodebuild \
             -project ArenaMobile.xcodeproj \
             -scheme ArenaMobile \
             -configuration Release \
@@ -66,8 +74,26 @@ jobs:
         run: |
           echo "===== last 150 lines of build.log ====="
           tail -n 150 build.log
-          echo "===== lines mentioning error/failed/undefined/ld: ====="
+          echo ""
+          echo "===== all lines mentioning error/failed/undefined/ld: ====="
           grep -n -i -E "error:|failed|undefined symbol|ld: |clang: error|linker command failed" build.log || echo "(no matching lines found — see the full build.log artifact uploaded below)"
+
+      - name: Extract Swift compiler errors with context
+        # Этот шаг — специально для случая, когда вывод xcodebuild обрывается на actool/clang и
+        # реальные ошибки Swift-компиляции не попадают в UI Actions. `grep -B5 -A5 "error:"`
+        # печатает каждую строку с "error:" плюс 5 строк до и 5 после — этого обычно достаточно,
+        # чтобы увидеть полный контекст: имя файла, номер строки, суть ошибки и подсказку
+        # компилятора. Если build.log пуст или ошибок не найдено, выводим явное сообщение —
+        # чтобы этот шаг сам по себе не выглядел как "ещё одна непонятная ошибка".
+        if: failure()
+        run: |
+          echo "===== Swift/clang errors with 5 lines of context ====="
+          if [ ! -s build.log ]; then
+            echo "build.log пуст — xcodebuild упал до начала записи вывода."
+            echo "Это значит, что проблема в самом вызове xcodebuild, а не в Swift-коде."
+            exit 0
+          fi
+          grep -n -B5 -A5 "error:" build.log || echo "(в build.log нет строк со словом 'error:' — пришлите артефакт целиком)"
 
       - name: Upload full build log (always, even on success)
         if: always()
@@ -78,12 +104,19 @@ jobs:
           retention-days: 14
 
       - name: Package into an (unsigned) .ipa
+        # Этот шаг запускается только если предыдущий (Build) прошёл успешно — иначе
+        # build/Build/Products/Release-iphoneos/ArenaMobile.app просто не существует,
+        # и cp упадёт с невнятным "No such file or directory" вместо понятной ошибки
+        # сборки. `if: success()` уточняет поведение: артефакт .ipa не собираем, если
+        # компиляция провалилась.
+        if: success()
         run: |
           mkdir -p Payload
           cp -R "build/Build/Products/Release-iphoneos/ArenaMobile.app" Payload/
           zip -r ArenaMobile-unsigned.ipa Payload
 
       - name: Upload .ipa as a build artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ArenaMobile-unsigned-ipa

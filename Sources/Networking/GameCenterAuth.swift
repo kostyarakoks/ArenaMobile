@@ -1,11 +1,6 @@
 import Foundation
 import GameKit
 
-/// Обёртка над GKLocalPlayer. Аутентифицирует игрока в Game Center и
-/// возвращает teamPlayerID — стабильный идентификатор Apple ID, который
-/// не меняется между запусками и переустановками приложения. Именно он
-/// отправляется на сервер как ключ для поиска/создания аккаунта
-/// (см. AuthSession.register).
 @MainActor
 final class GameCenterAuth {
     static let shared = GameCenterAuth()
@@ -15,8 +10,6 @@ final class GameCenterAuth {
 
     private var isAuthenticating = false
 
-    /// Аутентифицирует игрока в Game Center и возвращает teamPlayerID.
-    /// Повторные вызовы возвращают закэшированный ID без диалогов.
     func authenticate() async throws -> String {
         if let playerID {
             return playerID
