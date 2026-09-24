@@ -10,7 +10,7 @@ struct LoginView: View {
     // `key` остаётся нижним регистром, потому что именно его сервер ждёт в поле `tribe`
     // (см. Api\AuthController::register -> Rule::in(config('game.tribes'))).
     private let tribes: [(key: String, label: String, asset: String)] = [
-        ("roman", "Римляне", "Roman"),
+        ("roman", "Римляне", "roman"),
         ("teuton", "Тевтоны", "Teuton"),
         ("gaul", "Галлы", "Gaul"),
     ]
@@ -41,7 +41,7 @@ struct LoginView: View {
                         Image(option.asset) 
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(height: 260)
+                            .frame(height: 350)
                             .offset(y: 10) // Подстройте, чтобы ноги стояли на платформе
                             .tag(option.key)
                     }
