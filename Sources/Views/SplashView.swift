@@ -11,6 +11,11 @@ struct SplashView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .ignoresSafeArea()
+            // Островок под галлом 
+            Image("Background23")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .ignoresSafeArea()
 
             // 2. Персонаж (гном) в левом нижнем углу
             Image("DwarfCharacter")
