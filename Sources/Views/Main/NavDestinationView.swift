@@ -115,7 +115,7 @@ private struct ProfileScreen: View {
 
             Section {
                 Button(role: .destructive) {
-                    session.logout()
+                    Task { await session.logout() }
                 } label: {
                     Text("Выйти")
                 }

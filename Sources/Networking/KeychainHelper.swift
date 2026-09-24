@@ -1,44 +1,52 @@
 import Foundation
 import Security
 
-/// Minimal Keychain wrapper — just enough to store the Sanctum bearer token (see
-/// AuthSession.swift). UserDefaults would be simpler but isn't encrypted at rest; the token is
-/// a live credential (same trust level as a password), so it belongs in the Keychain.
+/// Keychain-обёртка для единственной строки — bearer-токена.
+/// Используется из AuthSession: readToken / saveToken / deleteToken.
 enum KeychainHelper {
-    private static let service = "com.arenaofthelords.mobile.auth"
+    private static let service = "com.arenaofthelords.mobile"
+    private static let tokenAccount = "bearerToken"
 
-    static func save(_ value: String, forKey key: String) {
-        let data = Data(value.utf8)
+    static func saveToken(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: tokenAccount,
         ]
-        SecItemDelete(query as CFDictionary) // replace any existing value for this key
+        SecItemDelete(query as CFDictionary)
+
         var attributes = query
         attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+
         SecItemAdd(attributes as CFDictionary, nil)
     }
 
-    static func read(forKey key: String) -> String? {
+    static func readToken() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: tokenAccount,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return token
     }
 
-    static func delete(forKey key: String) {
+    static func deleteToken() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: tokenAccount,
         ]
         SecItemDelete(query as CFDictionary)
     }

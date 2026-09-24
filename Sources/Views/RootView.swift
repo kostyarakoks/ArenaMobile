@@ -17,13 +17,13 @@ struct RootView: View {
     var body: some View {
         Group {
             switch session.phase {
-            case .checkingStoredToken:
-                SplashView()
-            case .signedOut:
-                LoginView()
-            case .signedIn:
-                MainTabView()
-            }
+case .loading:
+    SplashView()
+case .signedOut:
+    LoginView()
+case .signedIn:
+    MainTabView()
+}
         }
         // The whole app is built around the dark-navy/amber palette (see GameTheme.swift), not
         // a light/dark adaptive one — forcing dark keeps every default SwiftUI `.primary`/
