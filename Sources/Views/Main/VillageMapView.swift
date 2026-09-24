@@ -3,10 +3,8 @@ import SwiftUI
 /// The "Город" tab's real content — the native counterpart of Village/Buildings.vue.
 ///
 /// Layout:
-///   • Карта заполняет ВЕСЬ экран под safeAreaInset-барами и под глобальным
-///     хедером (MainTabView) и нижним доком (MainTabView).
-///   • `.safeAreaInset(edge: .top)` — тонкая полоса "📍 {имя деревни}" сразу
-///     под глобальным хедером. Полупрозрачный тёмный фон.
+///   • Карта заполняет ВЕСЬ экран.
+///   • `.safeAreaInset(edge: .top)` — тонкая полоса "📍 {имя деревни}".
 ///   • `.overlay(alignment: .topTrailing)` — столбец круглых кнопок справа
 ///     (урожай/настройки/почта/свиток), висит поверх карты.
 struct VillageMapView: View {
@@ -159,19 +157,26 @@ struct VillageMapView: View {
 
     // MARK: - Столбец кнопок справа
 
+    /// Кнопки на карте: урожай, настройки, сообщения, квесты.
+    ///
+    /// ВАЖНО: в `NavItem` сейчас нет кейсов `.messages` / `.quests` — сообщения
+    /// и квесты живут внутри вкладки «Ещё». Поэтому кнопки пока ничего не
+    /// делают (плейсхолдеры). Когда в NavItem появятся нужные кейсы (или
+    /// отдельные колбэки onOpenMessages / onOpenQuests пробросятся из
+    /// MainTabView) — замените тела замыканий ниже.
     private var mapActionColumn: some View {
         VStack(spacing: 10) {
             mapActionButton(icon: "leaf.fill", badge: nil) {
-                // TODO: открыть экран ресурсов/полей
+                // TODO: открыть экран полей/ресурсов
             }
             mapActionButton(icon: "gearshape.fill", badge: nil) {
                 // TODO: открыть настройки
             }
             mapActionButton(icon: "envelope.fill", badge: 1) {
-                selectItem(.messages)
+                // TODO: открыть сообщения
             }
             mapActionButton(icon: "scroll.fill", badge: nil) {
-                selectItem(.quests)
+                // TODO: открыть квесты
             }
         }
     }
@@ -183,8 +188,6 @@ struct VillageMapView: View {
     ) -> some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
-                // Основа кнопки — тёмно-синий квадрат со скруглением
-                // и золотой обводкой.
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -207,7 +210,6 @@ struct VillageMapView: View {
                     .foregroundStyle(GameTheme.amberLight)
                     .frame(width: 46, height: 46)
 
-                // Красный бейдж с числом — правый верхний угол.
                 if let badge, badge > 0 {
                     Text("\(badge)")
                         .font(.system(size: 10, weight: .bold))
