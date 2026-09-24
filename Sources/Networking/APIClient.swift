@@ -69,29 +69,48 @@ final class APIClient {
         return (decoded.token, decoded.user)
     }
 
+    /// Тело запроса на регистрацию. `name` — опциональный: клиент его больше не передаёт,
+    /// сервер сам генерирует "Игрок id{ID}". `game_center_player_id` — обязательный
+    /// (Api\AuthController::register() валидирует его как `required`): именно по нему
+    /// сервер понимает, что устройство уже регистрировалось, и возвращает токен
+    /// существующего аккаунта вместо создания нового.
+    ///
+    /// `Encodable` с опциональным `name` при `nil` вообще не включает это поле в JSON —
+    /// так что если хочется отправить "Игрок" с клиента, можно; если нет — сервер сам
+    /// подставит дефолт из lang/{locale}/game.php.
     private struct RegisterBody: Encodable {
-        let name: String
+        let name: String?
         let tribe: String
         let device_name: String
-        // Apple's stable-across-reinstalls Game Center identifier (GKLocalPlayer.local's
-        // teamPlayerID — see GameCenterAuth.swift) — sent so Api\AuthController::register() can
-        // recognize "this device already has an account" and sign back into it instead of
-        // creating a new one, per "подключить гейм центер что бы после выхода из игры нельзя
-        // было регистровать новый аккаунт". nil when Game Center sign-in failed/was declined;
-        // register() still works in that case, just without the anti-multi-account check.
-        let game_center_player_id: String?
+        let game_center_player_id: String
     }
 
-    /// POST /api/register — the "instant play" flow (Api\AuthController::register): the player
-    /// only ever types a nickname and picks a tribe, never an email or password (those are
-    /// generated server-side and never surfaced back here — the bearer token this returns is
-    /// the account's one and only credential from this point on, same as login()'s). When
-    /// `gameCenterPlayerID` already has an account attached server-side, the server returns THAT
-    /// account's token instead of creating a new one — so the returned user may not be a fresh
-    /// signup even though this is the register() call.
-    func register(name: String, tribe: String, deviceName: String, gameCenterPlayerID: String?) async throws -> (token: String, user: GameUser) {
+    /// POST /api/register — основной путь авторизации в приложении. Игрок тапает "Играть",
+    /// iOS отдаёт свой teamPlayerID (см. GameCenterAuth.swift), сервер по нему либо
+    /// логинит в существующий аккаунт, либо создаёт нового пользователя.
+    ///
+    /// Возвращаемый `user` может быть НЕ свежезарегистрированным — если у этого
+    /// teamPlayerID уже есть аккаунт на сервере, вернётся именно он (та же деревня,
+    /// тот же прогресс). Это и есть защита от повторных регистраций: удаление/
+    /// переустановка приложения не сбрасывает teamPlayerID, привязанный к Apple ID.
+    ///
+    /// `name` оставлен опциональным на случай, если в будущем появится экран
+    /// "введите имя" — сейчас iOS его не передаёт (передаёт nil), а сервер сам
+    /// генерирует "Игрок id{N}".
+    func register(
+        name: String?,
+        tribe: String,
+        deviceName: String,
+        gameCenterPlayerID: String
+    ) async throws -> (token: String, user: GameUser) {
         var request = try makeRequest(path: "/api/register", method: "POST")
-        request.httpBody = try JSONEncoder().encode(RegisterBody(name: name, tribe: tribe, device_name: deviceName, game_center_player_id: gameCenterPlayerID))
+        let body = RegisterBody(
+            name: name,
+            tribe: tribe,
+            device_name: deviceName,
+            game_center_player_id: gameCenterPlayerID
+        )
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await perform(request)
         try Self.checkStatus(response, data: data, decoder: decoder)

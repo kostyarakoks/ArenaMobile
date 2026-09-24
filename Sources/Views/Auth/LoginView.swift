@@ -3,58 +3,56 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var session: AuthSession
 
-    // Никнейм убран — сервер сам сгенерирует дефолтное имя (Api\AuthController::register).
-    @State private var tribe = "roman" // Значение по умолчанию
+    // Никнейм убран — сервер сам сгенерирует "Игрок id{N}".
+    // Авторизация — Game Center (см. AuthSession.register).
+    @State private var tribe = "roman"
 
-    // ИЗМЕНЕНО: добавлено третье поле `asset` — точное имя картинки в Assets.xcassets.
-    // `key` остаётся нижним регистром, потому что именно его сервер ждёт в поле `tribe`
-    // (см. Api\AuthController::register -> Rule::in(config('game.tribes'))).
     private let tribes: [(key: String, label: String, asset: String)] = [
-        ("roman", "Римляне", "roman"),
+        ("roman",  "Римляне", "Roman"),
         ("teuton", "Тевтоны", "Teuton"),
-        ("gaul", "Галлы", "Gaul"),
+        ("gaul",   "Галлы",   "Gaul"),
     ]
 
     var body: some View {
         ZStack {
-            // 1. Фоновое изображение (замок, река, каменная платформа).
+            // Фон (замок, река, каменная платформа).
             Image("LoginBackground")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .ignoresSafeArea()
 
-            // 2. UI поверх фона
             VStack(spacing: 0) {
-                // Логотип
                 Image("Logo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 240)
                     .padding(.top, 60)
 
-                Spacer() // Сдвигает персонажа вниз, к платформе на фоне
+                Spacer()
 
-                // Слайдер персонажей.
                 TabView(selection: $tribe) {
                     ForEach(tribes, id: \.key) { option in
-                        // ИЗМЕНЕНО: используем option.asset вместо option.key
-                        Image(option.asset) 
+                        Image(option.asset)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(height: 350)
-                            .offset(y: 10) // Подстройте, чтобы ноги стояли на платформе
+                            .frame(height: 390)
+                            .offset(y: -20)
                             .tag(option.key)
                     }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .frame(height: 300)
+                .frame(height: 450)
 
-                Spacer() // Прижимает кнопку к низу
+                Spacer()
 
-                // Кнопка "Играть"
                 Button {
-                    // Отправляем на сервер ключ (roman/teuton/gaul), а не имя ассета
-                    Task { await session.register(name: "Игрок", tribe: tribe) }
+                    // Главное отличие: теперь НЕ передаём name.
+                    // AuthSession сам:
+                    //   1) аутентифицируется в Game Center,
+                    //   2) отправит teamPlayerID на сервер,
+                    //   3) сервер вернёт токен существующего аккаунта
+                    //      либо создаст новый.
+                    Task { await session.register(tribe: tribe) }
                 } label: {
                     HStack {
                         if session.isSubmitting {
