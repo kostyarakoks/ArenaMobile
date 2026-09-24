@@ -19,39 +19,36 @@ import UIKit
 /// `UIScrollView`, whose pinch-to-zoom has always been anchor-preserving natively (the same
 /// `UIPinchGestureRecognizer` → `zoomScale` → `viewForZooming` delegate machinery Photos/Maps/
 /// Safari use) — instead of reimplementing that anchor math by hand.
-struct ZoomableMapContainer<Content: View>: View {
+///
+/// `overlay` — NEW: любой SwiftUI-контент, который должен ВСЕГДА висеть поверх карты и НЕ
+/// зумиться/панорамироваться вместе с ней (название деревни, бейдж уровня, кнопки HUD и т.п.).
+/// Рендерится в отдельном слое ZStack НАД PinchZoomScrollView, поэтому жесты UIScrollView его
+/// не касаются, и его размер/положение на экране остаются неизменными при любом zoomScale.
+/// Если overlay не передан — поведение контейнера остаётся ровно таким же, как раньше.
+struct ZoomableMapContainer<Content: View, Overlay: View>: View {
     let content: () -> Content
+    let overlay: () -> Overlay
     let minZoom: CGFloat
     let maxZoom: CGFloat
-    // Content's own natural width/height ratio (e.g. VillageLayout's viewboxWidth/viewboxHeight)
-    // — nil keeps the old behaviour of stretching content to exactly fill the container on both
-    // axes at zoom 1 (WorldMapView's flat tile grid has no "natural" aspect to preserve; any
-    // container size is equally valid for it).
-    //
-    // When given, the content is instead scaled to FIT THE CONTAINER'S HEIGHT while keeping this
-    // aspect ratio — mirroring Components/ZoomableMap.vue's own camera math (`scale = boxH /
-    // WORLD_H`, see its comment). On a portrait phone showing a village map that's wider than it
-    // is tall, fitting to height makes the rendered map WIDER than the screen even at zoom 1, so
-    // it's pannable left/right immediately — without this, content exactly matched the
-    // container's own (portrait) box on both axes with nothing left to pan to, which is what
-    // made the village map read as "cropped to the screen, doesn't scroll" (the reported bug).
     var contentAspect: CGFloat?
-
-    // "карта при открытии должна быть не верхнем правом углу, а выравнивать главное здание по
-    // центру" — fraction (0...1, 0...1) of the content's own width/height to center the initial
-    // viewport on, instead of UIScrollView's default (0, 0) top-left contentOffset. nil keeps the
-    // old top-left-origin behaviour (WorldMapView doesn't have a single "main" point to center on).
     var initialCenterFraction: CGPoint?
 
-    // ИЗМЕНЕНО: minZoom теперь по умолчанию 1.0 (карта ровно вписывается в экран,
-    // нельзя уменьшить меньше размера картинки), maxZoom 2.0 (максимальное увеличение х2).
-    // Ранее minZoom был 0.5, что позволяло уменьшать карту сильнее, чем нужно.
-    init(minZoom: CGFloat = 1.0, maxZoom: CGFloat = 2.0, contentAspect: CGFloat? = nil, initialCenterFraction: CGPoint? = nil, @ViewBuilder content: @escaping () -> Content) {
+    // ИЗМЕНЕНО: minZoom теперь 1.0 — карта открывается ровно по размеру картинки и НЕ может
+    // быть уменьшена меньше этого значения. maxZoom 2.0 — максимальное увеличение ровно х2.
+    init(
+        minZoom: CGFloat = 1.0,
+        maxZoom: CGFloat = 2.0,
+        contentAspect: CGFloat? = nil,
+        initialCenterFraction: CGPoint? = nil,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder overlay: @escaping () -> Overlay
+    ) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
         self.contentAspect = contentAspect
         self.initialCenterFraction = initialCenterFraction
         self.content = content
+        self.overlay = overlay
     }
 
     // Pulled out of `body` on purpose: a plain `if/else` with assignment statements (as this used
@@ -87,19 +84,60 @@ struct ZoomableMapContainer<Content: View>: View {
                 height: max(0, outer.size.height - outer.safeAreaInsets.top - outer.safeAreaInsets.bottom)
             )
             let base = baseSize(for: safeSize)
-            // `base` is the content's size AT ZOOM 1 — UIScrollView's own zoomScale (minZoom...
-            // maxZoom) handles everything beyond that natively; unlike the old code, nothing here
-            // multiplies this by a live zoom value.
-            PinchZoomScrollView(minZoom: minZoom, maxZoom: maxZoom, contentSize: CGSize(width: base.width, height: base.height), initialCenterFraction: initialCenterFraction, content: content)
+
+            // ZStack:
+            //   слой 0 (снизу) — UIScrollView с картой (зумится + панорамируется);
+            //   слой 1 (сверху) — overlay (название деревни и прочий фиксированный HUD).
+            // Overlay находится ВНЕ PinchZoomScrollView, поэтому:
+            //   • жесты pinch/pan его не трогают;
+            //   • его размер и позиция на экране неизменны при любом zoomScale.
+            ZStack {
+                // `base` is the content's size AT ZOOM 1 — UIScrollView's own zoomScale (minZoom...
+                // maxZoom) handles everything beyond that natively; unlike the old code, nothing
+                // here multiplies this by a live zoom value.
+                PinchZoomScrollView(
+                    minZoom: minZoom,
+                    maxZoom: maxZoom,
+                    contentSize: CGSize(width: base.width, height: base.height),
+                    initialCenterFraction: initialCenterFraction,
+                    content: content
+                )
                 .frame(width: safeSize.width, height: safeSize.height)
-                // GeometryReader also PLACES itself across the full region (it's the one view
-                // that greedily fills everything offered to it, safe area included) — shrinking
-                // just the size above would otherwise leave this new, smaller frame still pinned
-                // to the GeometryReader's own top-left corner, which itself starts underneath the
-                // header. `.position` re-centers it inside the actual safe sub-rectangle instead
-                // (top-left at (leading, top) insets, sized safeSize).
-                .position(x: outer.safeAreaInsets.leading + safeSize.width / 2, y: outer.safeAreaInsets.top + safeSize.height / 2)
+
+                // Overlay слой — рендерится поверх карты, не участвует в жестах скролла.
+                // .allowsHitTesting(true) по умолчанию — если overlay не должен ловить тапы,
+                // навесьте .allowsHitTesting(false) на конкретные элементы снаружи.
+                overlay()
+                    .frame(width: safeSize.width, height: safeSize.height)
+            }
+            // GeometryReader also PLACES itself across the full region (it's the one view
+            // that greedily fills everything offered to it, safe area included) — shrinking
+            // just the size above would otherwise leave this new, smaller frame still pinned
+            // to the GeometryReader's own top-left corner, which itself starts underneath the
+            // header. `.position` re-centers it inside the actual safe sub-rectangle instead
+            // (top-left at (leading, top) insets, sized safeSize).
+            .position(x: outer.safeAreaInsets.leading + safeSize.width / 2, y: outer.safeAreaInsets.top + safeSize.height / 2)
         }
+    }
+}
+
+// Удобный init для случая, когда overlay не нужен (чтобы старые вызовы продолжали компилироваться).
+extension ZoomableMapContainer where Overlay == EmptyView {
+    init(
+        minZoom: CGFloat = 1.0,
+        maxZoom: CGFloat = 2.0,
+        contentAspect: CGFloat? = nil,
+        initialCenterFraction: CGPoint? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(
+            minZoom: minZoom,
+            maxZoom: maxZoom,
+            contentAspect: contentAspect,
+            initialCenterFraction: initialCenterFraction,
+            content: content,
+            overlay: { EmptyView() }
+        )
     }
 }
 
@@ -123,9 +161,8 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
         // ИЗМЕНЕНО: при minZoom = 1.0 и maxZoom = 2.0 начальный зум будет ровно 1.0.
-        // Ранее здесь было `scrollView.zoomScale = minZoom`, что при minZoom = 0.5
-        // заставляло карту открываться уже уменьшенной. Теперь карта всегда открывается
-        // в масштабе 1.0 (ровно по размеру экрана).
+        // Раньше здесь было `scrollView.zoomScale = minZoom`, что при minZoom = 0.5
+        // заставляло карту открываться уже уменьшенной.
         scrollView.zoomScale = min(max(1, minZoom), maxZoom)
         scrollView.bouncesZoom = true
         scrollView.showsHorizontalScrollIndicator = false
