@@ -42,21 +42,23 @@ jobs:
         # make this step's exit code always be tee's (0), silently turning a real build
         # failure into a "green" step. With pipefail, the step still fails exactly when
         # xcodebuild does — `tee` only *additionally* saves everything to build.log so the
-        # very last lines (the ones that scroll past / get swallowed in the Actions UI when
-        # clang's diagnostic output isn't flushed the way plain console output is) are never
-        # lost: the "Show the actual error on failure" step below prints them explicitly, and
-        # the full file is also uploaded as its own artifact regardless.
+        # very last lines are never lost.
         #
-        # `stdbuf -oL -eL` (from coreutils, preinstalled on macos runners) forces xcodebuild's
-        # stdout and stderr to be line-buffered rather than fully buffered. Without it, when
-        # xcodebuild's output is piped through `tee`, glibc/BSD libc switch to block buffering,
-        # and the last chunk of output (the actual error lines) can still be sitting in the
-        # buffer when the process exits — which is precisely why the CI log the user pasted
-        # ended mid-`actool`, with the real Swift compile errors nowhere to be seen even
-        # though build.log itself probably had them.
+        # NSUnbufferedIO=YES is Apple's own convention (honoured by xcodebuild, clang, ld and
+        # most other Xcode toolchain binaries) for forcing line-buffered stdout/stderr even
+        # when the process is writing into a pipe. Previously this step tried to use `stdbuf`
+        # for the same purpose, but `stdbuf` is a GNU coreutils tool and simply does not exist
+        # on macOS runners — the shell failed with "stdbuf: command not found" (exit code 127)
+        # before xcodebuild ever got a chance to run. NSUnbufferedIO is the macOS-native,
+        # no-extra-packages equivalent: nothing to install, nothing to break on a future runner
+        # image update. Without SOME form of unbuffering, xcodebuild's output through `tee` can
+        # end mid-line (e.g. right after actool starts) with the actual Swift compiler errors
+        # still sitting in the process's stdio buffer at the moment it exits.
+        env:
+          NSUnbufferedIO: YES
         run: |
           set -o pipefail
-          stdbuf -oL -eL xcodebuild \
+          xcodebuild \
             -project ArenaMobile.xcodeproj \
             -scheme ArenaMobile \
             -configuration Release \
