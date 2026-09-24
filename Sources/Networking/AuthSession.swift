@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
+/// Фаза сессии — RootView по ней решает, показать Splash / Login / MainTab.
 enum AuthPhase {
     case loading
     case signedOut
     case signedIn
 }
 
-/// Глобальное состояние авторизации. Основной путь — Game Center.
-/// Статус подключения GC живёт в GameCenterAuth.shared.status и
-/// читается LoginView напрямую; здесь только логика регистрации/логина.
+/// Глобальное состояние авторизации. Регистрация — по никнейму,
+/// Game Center не используется.
 @MainActor
 final class AuthSession: ObservableObject {
     @Published private(set) var bearerToken: String?
@@ -24,19 +24,24 @@ final class AuthSession: ObservableObject {
         phase = bearerToken == nil ? .signedOut : .loading
     }
 
-    func register(tribe: String) async {
+    /// Регистрация по никнейму и племени. Сервер сам генерирует email и
+    /// пароль, возвращает bearer-токен.
+    func register(name: String, tribe: String) async {
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
 
-        do {
-            let teamPlayerID = try await GameCenterAuth.shared.authenticate()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Введите никнейм."
+            return
+        }
 
+        do {
             let response = try await APIClient.shared.register(
-                name: nil,
+                name: trimmed,
                 tribe: tribe,
-                deviceName: "ArenaMobile iOS",
-                gameCenterPlayerID: teamPlayerID
+                deviceName: "ArenaMobile iOS"
             )
 
             bearerToken = response.token
@@ -45,7 +50,7 @@ final class AuthSession: ObservableObject {
             phase = .signedIn
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "Не удалось войти. Проверьте подключение к интернету."
+                ?? "Не удалось зарегистрироваться. Проверьте подключение к интернету."
         }
     }
 

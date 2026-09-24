@@ -2,8 +2,8 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject private var session: AuthSession
-    @StateObject private var gameCenter = GameCenterAuth.shared
 
+    @State private var nickname = ""
     @State private var tribe = "roman"
 
     private let tribes: [(key: String, label: String, asset: String)] = [
@@ -11,6 +11,10 @@ struct LoginView: View {
         ("teuton", "Тевтоны", "Teuton"),
         ("gaul",   "Галлы",   "Gaul"),
     ]
+
+    private var canPlay: Bool {
+        !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         ZStack {
@@ -23,33 +27,47 @@ struct LoginView: View {
                 Image("Logo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 240)
+                    .frame(maxWidth: 220)
                     .padding(.top, 40)
 
-                // Бейдж статуса Game Center
-                gameCenterBadge
-                    .padding(.top, 16)
+                // Поле никнейма
+                TextField("Никнейм", text: $nickname)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(14)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                    .tint(.white)
+                    .padding(.top, 24)
+                    .padding(.horizontal, 28)
 
                 Spacer()
 
+                // Слайдер племён
                 TabView(selection: $tribe) {
                     ForEach(tribes, id: \.key) { option in
                         Image(option.asset)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(height: 390)
-                            .offset(y: -20)
+                            .frame(height: 360)
+                            .offset(y: -10)
                             .tag(option.key)
                     }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .frame(height: 450)
+                .frame(height: 400)
 
                 Spacer()
 
-                // Кнопка "Играть" — активна только когда GC подключён.
+                // Кнопка «Играть»
                 Button {
-                    Task { await session.register(tribe: tribe) }
+                    Task {
+                        await session.register(
+                            name: nickname.trimmingCharacters(in: .whitespacesAndNewlines),
+                            tribe: tribe
+                        )
+                    }
                 } label: {
                     HStack {
                         if session.isSubmitting {
@@ -65,22 +83,6 @@ struct LoginView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .disabled(!canPlay || session.isSubmitting)
 
-                // Кнопка "Повторить" — только если подключение провалилось.
-                if case .failed = gameCenter.status {
-                    Button {
-                        Task { try? await gameCenter.authenticate() }
-                    } label: {
-                        Text("Повторить подключение к Game Center")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
-                    .padding(.top, 10)
-                }
-
                 if let error = session.errorMessage {
                     Text(error)
                         .font(.footnote)
@@ -91,48 +93,6 @@ struct LoginView: View {
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 20)
-        }
-        // Пробуем подключиться к Game Center сразу при показе экрана.
-        // Если уже подключён (кэш) — authenticate() вернёт мгновенно.
-        .task {
-            try? await gameCenter.authenticate()
-        }
-    }
-
-    private var canPlay: Bool {
-        gameCenter.status.isConnected
-    }
-
-    @ViewBuilder
-    private var gameCenterBadge: some View {
-        let (icon, text, color) = badgeContent
-        HStack(spacing: 6) {
-            if case .connecting = gameCenter.status {
-                ProgressView().tint(.white).scaleEffect(0.8)
-            } else {
-                Image(systemName: icon)
-                    .foregroundStyle(color)
-            }
-            Text(text)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.white)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color.black.opacity(0.55))
-        .clipShape(Capsule())
-    }
-
-    private var badgeContent: (icon: String, text: String, color: Color) {
-        switch gameCenter.status {
-        case .unknown:
-            return ("circle.dashed", "Game Center: ожидание…", .gray)
-        case .connecting:
-            return ("arrow.triangle.2.circlepath", "Подключение к Game Center…", .white)
-        case .connected(_, let name):
-            return ("checkmark.circle.fill", "Game Center подключён: \(name)", .green)
-        case .failed(let message):
-            return ("xmark.octagon.fill", message, .red)
         }
     }
 }

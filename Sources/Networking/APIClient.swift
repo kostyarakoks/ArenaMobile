@@ -67,28 +67,24 @@ final class APIClient {
     }
 
     private struct RegisterBody: Encodable {
-        let name: String?
+        let name: String
         let tribe: String
         let device_name: String
-        let game_center_player_id: String
     }
 
-    /// POST /api/register — основной путь авторизации. Игрок тапает
-    /// "Играть", iOS отдаёт teamPlayerID, сервер по нему либо логинит в
-    /// существующий аккаунт, либо создаёт нового пользователя.
-    /// Если teamPlayerID уже привязан к аккаунту — вернётся ЕГО токен.
+    /// POST /api/register — регистрация по никнейму. Игрок вводит ник,
+    /// выбирает племя, тапает «Играть». Сервер сам генерирует email и
+    /// пароль, возвращает bearer-токен — единственный креденшл впредь.
     func register(
-        name: String?,
+        name: String,
         tribe: String,
-        deviceName: String,
-        gameCenterPlayerID: String
+        deviceName: String
     ) async throws -> (token: String, user: GameUser) {
         var request = try makeRequest(path: "/api/register", method: "POST")
         let body = RegisterBody(
             name: name,
             tribe: tribe,
-            device_name: deviceName,
-            game_center_player_id: gameCenterPlayerID
+            device_name: deviceName
         )
         request.httpBody = try JSONEncoder().encode(body)
 
