@@ -36,7 +36,7 @@ final class APIClient {
     /// has to type in correctly before they can even register. Bumping to a different server (or
     /// back to a configurable one) is a one-line change here, not a client-facing setting.
     static let baseURLDefaultsKey = "api.baseURL"
-    static let defaultServerURLString = "https://game.playstation-code.com"
+    static let defaultServerURLString = "https://arenaoflords.ru"
 
     var baseURL: URL? {
         URL(string: Self.defaultServerURLString)
