@@ -15,7 +15,6 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            // Фон (замок, река, каменная платформа).
             Image("LoginBackground")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -46,12 +45,6 @@ struct LoginView: View {
                 Spacer()
 
                 Button {
-                    // Главное отличие: теперь НЕ передаём name.
-                    // AuthSession сам:
-                    //   1) аутентифицируется в Game Center,
-                    //   2) отправит teamPlayerID на сервер,
-                    //   3) сервер вернёт токен существующего аккаунта
-                    //      либо создаст новый.
                     Task { await session.register(tribe: tribe) }
                 } label: {
                     HStack {

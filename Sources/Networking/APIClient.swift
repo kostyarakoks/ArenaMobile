@@ -79,10 +79,10 @@ final class APIClient {
     /// так что если хочется отправить "Игрок" с клиента, можно; если нет — сервер сам
     /// подставит дефолт из lang/{locale}/game.php.
     private struct RegisterBody: Encodable {
-        let name: String?
-        let tribe: String
-        let device_name: String
-        let game_center_player_id: String
+    let name: String?
+    let tribe: String
+    let device_name: String
+    let game_center_player_id: String
     }
 
     /// POST /api/register — основной путь авторизации в приложении. Игрок тапает "Играть",
@@ -98,10 +98,10 @@ final class APIClient {
     /// "введите имя" — сейчас iOS его не передаёт (передаёт nil), а сервер сам
     /// генерирует "Игрок id{N}".
     func register(
-        name: String?,
-        tribe: String,
-        deviceName: String,
-        gameCenterPlayerID: String
+    name: String?,
+    tribe: String,
+    deviceName: String,
+    gameCenterPlayerID: String   // ← НЕ String?, обязательно String
     ) async throws -> (token: String, user: GameUser) {
         var request = try makeRequest(path: "/api/register", method: "POST")
         let body = RegisterBody(

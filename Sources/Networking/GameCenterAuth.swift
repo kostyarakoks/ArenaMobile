@@ -1,14 +1,11 @@
 import Foundation
 import GameKit
 
-/// Обёртка над GKLocalPlayer. Задача — один раз аутентифицировать игрока
-/// в Game Center и закэшировать его teamPlayerID (стабильный идентификатор
-/// Apple ID, не меняется между запусками и переустановками приложения).
-///
-/// Именно teamPlayerID (а не displayName!) отправляется на сервер как
-/// единственный надёжный ключ для поиска существующего аккаунта. displayName
-/// игрок может менять в настройках Game Center, и использовать его как
-/// идентификатор нельзя.
+/// Обёртка над GKLocalPlayer. Аутентифицирует игрока в Game Center и
+/// возвращает teamPlayerID — стабильный идентификатор Apple ID, который
+/// не меняется между запусками и переустановками приложения. Именно он
+/// отправляется на сервер как ключ для поиска/создания аккаунта
+/// (см. AuthSession.register).
 @MainActor
 final class GameCenterAuth {
     static let shared = GameCenterAuth()
@@ -25,8 +22,6 @@ final class GameCenterAuth {
             return playerID
         }
 
-        // Защита от параллельных вызовов (например, если пользователь
-        // быстро тапает "Играть" несколько раз).
         guard !isAuthenticating else {
             throw GameCenterError.authenticationInProgress
         }
@@ -34,8 +29,6 @@ final class GameCenterAuth {
         defer { isAuthenticating = false }
 
         return try await withCheckedThrowingContinuation { continuation in
-            // authenticateHandler может вызываться несколько раз — но continuation
-            // резюмируется ровно один раз (флаг didResume).
             var didResume = false
 
             GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
@@ -47,10 +40,6 @@ final class GameCenterAuth {
                     return
                 }
 
-                // Game Center иногда просит показать UI входа (старые версии iOS).
-                // На современных системах Apple показывает свой шит сама, и сюда
-                // мы не попадаем. Если попали — считаем это "требуется действие
-                // пользователя" и просим его открыть настройки.
                 if viewController != nil {
                     didResume = true
                     continuation.resume(throwing: GameCenterError.requiresUserInteraction)

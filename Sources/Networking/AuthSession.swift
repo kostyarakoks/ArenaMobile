@@ -1,11 +1,11 @@
 import Foundation
 import SwiftUI
 
-/// Глобальное состояние авторизации. Держит bearer-токен (Keychain), текущего
-/// пользователя и методы login/register/logout. Game Center-логин теперь
-/// встроен в `register`: клиент сначала получает teamPlayerID у GameCenterAuth,
-/// затем отправляет его на сервер, а сервер сам решает — создать новый аккаунт
-/// или вернуть токен существующего.
+/// Глобальное состояние авторизации. Держит bearer-токен (Keychain),
+/// текущего пользователя и методы login/register/logout. Game Center-логин
+/// встроен в register(): клиент получает teamPlayerID у GameCenterAuth,
+/// отправляет его на сервер, а сервер сам решает — создать новый аккаунт
+/// или вернуть токен существующего (по game_center_player_id).
 @MainActor
 final class AuthSession: ObservableObject {
     @Published private(set) var bearerToken: String?
@@ -16,16 +16,18 @@ final class AuthSession: ObservableObject {
     private let keychain = KeychainStore()
 
     init() {
-        // При старте приложения пробуем восстановить сохранённый токен,
-        // чтобы не гонять игрока через Game Center каждый раз.
+        // Восстанавливаем сохранённый токен при старте, чтобы не гонять
+        // игрока через Game Center каждый раз.
         bearerToken = keychain.readToken()
     }
 
-    /// Регистрация/вход через Game Center. Единственный "передний" путь для
-    /// новых игроков — поля email/password не спрашиваются, все креды
-    /// генерирует сервер. Если игрок с таким teamPlayerID уже существует,
-    /// сервер вернёт токен существующего аккаунта — повторной регистрации
-    /// не произойдёт.
+    /// Регистрация/вход через Game Center. ЕДИНСТВЕННЫЙ основной путь для
+    /// новых игроков. Поля email/password не спрашиваются — все креды
+    /// генерирует сервер. Если у устройства уже есть аккаунт (по teamPlayerID),
+    /// сервер вернёт токен существующего аккаунта, а не создаст новый —
+    /// это защищает от повторных регистраций.
+    ///
+    /// `name` НЕ передаём (nil) — сервер сам сгенерирует "Игрок id{ID}".
     func register(tribe: String) async {
         isSubmitting = true
         errorMessage = nil
@@ -33,14 +35,17 @@ final class AuthSession: ObservableObject {
 
         do {
             // 1. Аутентификация в Game Center (при первом запуске — диалог
-            //    Apple, дальше — мгновенно из кэша).
+            //    Apple, дальше — мгновенно из кэша GKLocalPlayer).
             let teamPlayerID = try await GameCenterAuth.shared.authenticate()
 
-            // 2. Отправляем его на сервер. Имя НЕ передаём — сервер сам
-            //    сгенерирует "Игрок id{N}" для нового аккаунта.
-            let response = try await APIClient.shared.registerWithGameCenter(
-                gameCenterPlayerID: teamPlayerID,
-                tribe: tribe
+            // 2. Отправляем teamPlayerID + племя. Имя НЕ передаём — сервер
+            //    сам сгенерирует "Игрок id{N}". Если игрок с таким teamPlayerID
+            //    уже существует, сервер вернёт токен существующего аккаунта.
+            let response = try await APIClient.shared.register(
+                name: nil,
+                tribe: tribe,
+                deviceName: "ArenaMobile iOS",
+                gameCenterPlayerID: teamPlayerID
             )
 
             // 3. Сохраняем токен и пользователя.
@@ -60,7 +65,11 @@ final class AuthSession: ObservableObject {
         defer { isSubmitting = false }
 
         do {
-            let response = try await APIClient.shared.login(email: email, password: password)
+            let response = try await APIClient.shared.login(
+                email: email,
+                password: password,
+                deviceName: "ArenaMobile iOS"
+            )
             bearerToken = response.token
             currentUser = response.user
             keychain.saveToken(response.token)
@@ -75,7 +84,7 @@ final class AuthSession: ObservableObject {
     func restoreSession() async {
         guard let token = bearerToken else { return }
         do {
-            let user = try await APIClient.shared.fetchCurrentUser(token: token)
+            let user = try await APIClient.shared.fetchMe(token: token)
             currentUser = user
         } catch {
             signOutIfUnauthorized(error)
