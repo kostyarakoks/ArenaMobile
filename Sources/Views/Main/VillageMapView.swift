@@ -1,236 +1,235 @@
 import SwiftUI
 
-/// The "Город" tab's real content — the native counterpart of Village/Buildings.vue (dorf2):
-/// loads the player's village list + one village's building-plot map from
-/// Api\VillageController (travianz-laravel), and draws/behaves like the web version as closely
-/// as a native screen reasonably can:
-///  - background art + 21 plot markers, positioned from an admin map template or the built-in
-///    classic layout (VillageLayout.swift), main building (slot 8) drawn larger with a warm
-///    glow behind it, damaged plots ringed in red (siege damage);
-///  - the village's tier badge (Поселение/Деревня/Город/Мегаполис) top-left, same as the web;
-///  - a live construction-progress bar + countdown on any plot with a queued build (mirrors
-///    ConstructionProgress.vue), ticking from the server's real started_at/finishes_at window;
-///  - tapping a plot opens a bottom sheet that merges BuildingActionMenu + UpgradeModal (built
-///    plot) or EmptyPlotOverlay + UpgradeModal (empty plot) into one flow — a single tap being
-///    the natural mobile equivalent of the web's hover-then-click sequence — with real
-///    build/upgrade actions (Api\VillageController::slotAction(), same BuildingService the web
-///    app uses) including "finish instantly for 💎";
-///  - pinch-to-zoom + pan on the map itself (native equivalent of ZoomableMap.vue).
+/// The "Город" tab's real content — the native counterpart of Village/Buildings.vue.
 ///
-/// ОБНОВЛЕНО: village name + tier badge теперь передаются в ZoomableMapContainer через новый
-/// параметр `overlay` — они рендерятся ПОВЕРХ карты и НЕ зумируются/не панорамируются вместе
-/// с ней. Раньше они были внутри `content` и уезжали/растягивались при любом жесте.
+/// Layout:
+///   • Карта заполняет ВЕСЬ экран под safeAreaInset-барами и под глобальным
+///     хедером (MainTabView) и нижним доком (MainTabView).
+///   • `.safeAreaInset(edge: .top)` — тонкая полоса "📍 {имя деревни}" сразу
+///     под глобальным хедером. Полупрозрачный тёмный фон.
+///   • `.overlay(alignment: .topTrailing)` — столбец круглых кнопок справа
+///     (урожай/настройки/почта/свиток), висит поверх карты.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
-    // Active-village state lives here now (see VillageSession.swift) — shared with the global
-    // header (GameHeaderBar) and the floating map controls (MapOverlayControls) instead of this
-    // screen owning its own private copy.
     @EnvironmentObject private var villageSession: VillageSession
 
-    // Threaded down from NavDestinationView's own `selectItem` (via MainTabView) so
-    // MapOverlayControls can switch the active tab through the app's one navigation mechanism
-    // instead of pushing onto the NavigationStack — see MapOverlayControls' doc comment.
     var selectItem: (NavItem) -> Void = { _ in }
 
     @State private var tappedSlot: Int?
-    // Throttles the construction-finished poll below — set to the moment a refresh was last
-    // actually fired, not merely checked, so a slow/failed request gets retried a few seconds
-    // later instead of being fired again every single tick of the 1s poll loop.
     @State private var lastConstructionRefreshAttempt: Date = .distantPast
 
-    // Rename — "добавить возможность название деревни при достижение 2 уровня главного
-    // здания (так же сделать в iOS)". Gated by detail.village.canRename (server-checked too,
-    // see Api\VillageController::update()), so the pencil button below only appears once
-    // that's true.
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var renameError: String?
     @State private var isRenameSaving = false
 
-    // "строительство так и подвисает... весит на 00:00" — a previous round of this same
-    // investigation guessed the server sent fractional-second timestamps and "fixed" this
-    // screen's date formatter to require them — but Api\VillageController::queueProps() has
-    // always used Carbon's `toIso8601String()`, which never includes fractional seconds; that
-    // "fix" actually broke parsing of the real format instead. Fixed properly this time by
-    // reading the actual server code instead of assuming, and by no longer depending on
-    // client-side date parsing for the "is this done" check at all — see `remainingSeconds` on
-    // VillageDetail.QueueEntry and the poll loop below, which now just compares that Int.
     private var selectedVillageID: Int? { villageSession.selectedVillageID }
     private var detail: VillageDetail? { villageSession.detail }
     private var isLoading: Bool { villageSession.isLoading }
     private var errorMessage: String? { villageSession.errorMessage }
 
     var body: some View {
-        content
-            // The global resources header (GameHeaderBar, wired up in MainTabView) is the only
-            // top chrome now — this screen no longer draws its own header (see
-            // MapOverlayControls for where the village switcher and profile/messages/quests
-            // shortcuts that used to live in that header moved to instead).
-            .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .trailing) {
-                MapOverlayControls(selectItem: selectItem)
-                    .padding(.trailing, 12)
+        ZStack {
+            // Карта (или заглушка, пока её нет).
+            if let detail {
+                mapCanvas(detail)
+                    .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
             }
-            .task {
-                await villageSession.loadIfNeeded(session)
-            }
-            // A finished build used to just sit there showing the construction badge forever:
-            // `plotMarker` decides "under construction" purely from whether `detail.queue` still
-            // contains an entry for that slot (see its own doc comment), and nothing ever told
-            // the app to re-fetch `detail.queue` once a countdown reached zero — ConstructionBadge
-            // is a pure renderer with no callback, and VillageSession.loadIfNeeded only fetches
-            // once per signed-in session. This background poll is the missing piece: once a
-            // second, check whether any queue entry's finishesAt has passed, and if so re-fetch
-            // the village (the server will have already dropped/advanced that entry) — same
-            // villageSession.refreshSelected(session) call SlotActionSheet's onChanged already
-            // uses after a NEW build/upgrade action, just now also firing for one COMPLETING.
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    guard let queue = villageSession.detail?.queue, !queue.isEmpty else { continue }
-                    // `finishesAt` is an ABSOLUTE timestamp, so comparing it straight against
-                    // `.now` is driftless regardless of how long ago this queue snapshot was
-                    // fetched — unlike `remainingSeconds` (a relative offset frozen at fetch
-                    // time, which would need its own separate "how long ago was that fetch"
-                    // bookkeeping to stay accurate, not worth the complexity when this absolute
-                    // comparison already does the job correctly). A previous round of this same
-                    // investigation wrongly assumed the server sent fractional-second timestamps
-                    // and configured this formatter to require them — but
-                    // Api\VillageController::queueProps() has always used Carbon's
-                    // `toIso8601String()`, which never includes fractional seconds; that "fix"
-                    // broke parsing of the real format instead of fixing anything. Plain
-                    // `ISO8601DateFormatter()` (no custom `.formatOptions`) is what actually
-                    // matches it.
-                    let hasFinished = queue.contains { entry in
-                        guard let finishes = ISO8601DateFormatter().date(from: entry.finishesAt) else { return false }
-                        return finishes <= .now
-                    }
-                    // Re-checked every tick but only actually fires every few seconds — avoids
-                    // hammering the server every second while waiting for a slow response, while
-                    // still retrying if the first attempt was lost to a transient network error.
-                    guard hasFinished, Date.now.timeIntervalSince(lastConstructionRefreshAttempt) > 3 else { continue }
-                    lastConstructionRefreshAttempt = .now
-                    villageSession.refreshSelected(session)
-                }
-            }
-            .sheet(item: Binding(get: { tappedSlot.map { IdentifiableSlotID(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
-                if let detail, let villageID = selectedVillageID {
-                    SlotActionSheet(
-                        villageID: villageID,
-                        slot: wrapped.id,
-                        builtSlot: detail.buildings.first(where: { $0.slot == wrapped.id }),
-                        village: detail.village,
-                        onChanged: { villageSession.refreshSelected(session) }
-                    )
-                    .presentationDetents([.medium, .large])
-                }
-            }
-            // "не сохраняет название деревни" — a system `.alert` with an embedded `TextField`
-            // has a well-documented SwiftUI quirk: tapping the alert's action button doesn't
-            // always commit the very latest keystroke into the bound `@State` first (it reliably
-            // commits on Return, but not always on a direct button tap while the field still has
-            // focus), so the save could silently go through with a stale/earlier value. Worse,
-            // whether or not THAT was the actual cause here: tapping ANY alert button dismisses
-            // the alert immediately, and `renameError` was only ever displayed inside that same
-            // alert's `message:` — so if the save failed for any reason (network, the level-2
-            // gate, validation), the alert was already gone by the time `renameError` got set,
-            // and the player saw nothing at all happen, indistinguishable from "didn't save".
-            // A plain sheet with an ordinary `TextField` has neither problem: standard two-way
-            // binding with no special commit timing, and it only dismisses on success — a
-            // failure keeps it open with the real error visible right there, and Save disabled
-            // while a request's in flight so a slow tap can't double-fire.
-            .sheet(isPresented: $isRenaming) {
-                NavigationStack {
-                    Form {
-                        Section {
-                            TextField("Название деревни", text: $renameText)
-                                .disabled(isRenameSaving)
-                        } footer: {
-                            if let renameError {
-                                Text(renameError).foregroundStyle(GameTheme.bad)
-                            }
-                        }
-                    }
-                    .navigationTitle("Переименовать деревню")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Отмена") { isRenaming = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            if isRenameSaving {
-                                ProgressView()
-                            } else {
-                                Button("Сохранить") { Task { await performRename() } }
-                                    .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            }
-                        }
-                    }
-                }
-                .presentationDetents([.height(190)])
-            }
-    }
 
-    private func performRename() async {
-        guard let token = session.bearerToken else { return }
-        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let villageID = selectedVillageID else { return }
-        renameError = nil
-        isRenameSaving = true
-        defer { isRenameSaving = false }
-        do {
-            try await APIClient.shared.renameVillage(id: villageID, name: trimmed, token: token)
-            isRenaming = false
-            villageSession.refreshSelected(session)
-        } catch {
-            session.signOutIfUnauthorized(error)
-            renameError = (error as? LocalizedError)?.errorDescription ?? "Не удалось переименовать деревню."
+            // Экран ошибки, если деревня не загрузилась.
+            if let errorMessage, detail == nil, !isLoading {
+                errorStateView(errorMessage)
+            }
+        }
+        // Тонкая полоса с названием деревни — сразу под глобальным хедером.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            villageNameBar
+        }
+        // Столбец кнопок справа — висит поверх карты.
+        .overlay(alignment: .topTrailing) {
+            mapActionColumn
+                .padding(.trailing, 10)
+                .padding(.top, 8)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .task {
+            await villageSession.loadIfNeeded(session)
+        }
+        // Поллинг завершения строительства.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let queue = villageSession.detail?.queue, !queue.isEmpty else { continue }
+                let hasFinished = queue.contains { entry in
+                    guard let finishes = ISO8601DateFormatter().date(from: entry.finishesAt) else { return false }
+                    return finishes <= .now
+                }
+                guard hasFinished, Date.now.timeIntervalSince(lastConstructionRefreshAttempt) > 3 else { continue }
+                lastConstructionRefreshAttempt = .now
+                villageSession.refreshSelected(session)
+            }
+        }
+        .sheet(item: Binding(get: { tappedSlot.map { IdentifiableSlotID(id: $0) } }, set: { tappedSlot = $0?.id })) { wrapped in
+            if let detail, let villageID = selectedVillageID {
+                SlotActionSheet(
+                    villageID: villageID,
+                    slot: wrapped.id,
+                    builtSlot: detail.buildings.first(where: { $0.slot == wrapped.id }),
+                    village: detail.village,
+                    onChanged: { villageSession.refreshSelected(session) }
+                )
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $isRenaming) {
+            NavigationStack {
+                Form {
+                    Section {
+                        TextField("Название деревни", text: $renameText)
+                            .disabled(isRenameSaving)
+                    } footer: {
+                        if let renameError {
+                            Text(renameError).foregroundStyle(GameTheme.bad)
+                        }
+                    }
+                }
+                .navigationTitle("Переименовать деревню")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { isRenaming = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        if isRenameSaving {
+                            ProgressView()
+                        } else {
+                            Button("Сохранить") { Task { await performRename() } }
+                                .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.height(190)])
         }
     }
+
+    // MARK: - Полоса с названием деревни
 
     @ViewBuilder
-    private var content: some View {
-        if isLoading && detail == nil {
-            ProgressView("Загрузка деревни…")
-                .tint(GameTheme.amber)
-                .foregroundStyle(GameTheme.textSecondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .gameScreenBackground()
-        } else if let errorMessage {
-            VStack(spacing: 12) {
-                Text("Не удалось загрузить деревню").font(.headline).foregroundStyle(GameTheme.textPrimary)
-                Text(errorMessage).font(.footnote).foregroundStyle(GameTheme.textMuted).multilineTextAlignment(.center)
-                Button("Повторить") {
-                    if let id = selectedVillageID {
-                        Task { await villageSession.loadDetail(id: id, session) }
-                    } else {
-                        Task { await villageSession.loadVillages(session) }
+    private var villageNameBar: some View {
+        if let detail {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(GameTheme.amberLight)
+
+                Text(detail.village.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+
+                if detail.village.canRename {
+                    Button {
+                        renameText = detail.village.name
+                        renameError = nil
+                        isRenaming = true
+                    } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(GameTheme.amberLight.opacity(0.9))
                     }
                 }
-                .buttonStyle(.gamePrimary)
-                .frame(width: 160)
+
+                Spacer()
             }
-            .padding(32)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .gameScreenBackground()
-        } else if let detail {
-            // Fills exactly the space between the nav bar and the bottom dock — no ScrollView,
-            // no side padding, matching the web's own "карта занимает весь контейнер" layout
-            // (Village/Buildings.vue's own height: calc(...) container).
-            mapCanvas(detail)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .gameScreenBackground()
-        } else {
-            Color.clear.gameScreenBackground()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(Color.black.opacity(0.72))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.black.opacity(0.35))
+                    .frame(height: 0.5)
+            }
         }
     }
+
+    // MARK: - Столбец кнопок справа
+
+    private var mapActionColumn: some View {
+        VStack(spacing: 10) {
+            mapActionButton(icon: "leaf.fill", badge: nil) {
+                // TODO: открыть экран ресурсов/полей
+            }
+            mapActionButton(icon: "gearshape.fill", badge: nil) {
+                // TODO: открыть настройки
+            }
+            mapActionButton(icon: "envelope.fill", badge: 1) {
+                selectItem(.messages)
+            }
+            mapActionButton(icon: "scroll.fill", badge: nil) {
+                selectItem(.quests)
+            }
+        }
+    }
+
+    private func mapActionButton(
+        icon: String,
+        badge: Int?,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ZStack(alignment: .topTrailing) {
+                // Основа кнопки — тёмно-синий квадрат со скруглением
+                // и золотой обводкой.
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.13, green: 0.20, blue: 0.36),
+                                Color(red: 0.08, green: 0.13, blue: 0.26),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(GameTheme.amberLight.opacity(0.7), lineWidth: 1.2)
+                    )
+                    .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(GameTheme.amberLight)
+                    .frame(width: 46, height: 46)
+
+                // Красный бейдж с числом — правый верхний угол.
+                if let badge, badge > 0 {
+                    Text("\(badge)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.red)
+                        .clipShape(Capsule())
+                        .offset(x: 4, y: -4)
+                }
+            }
+            .frame(width: 46, height: 46)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Карта
 
     private func mapCanvas(_ detail: VillageDetail) -> some View {
         let width = Double(detail.map.viewboxWidth ?? Int(VillageLayout.viewboxWidth))
         let height = Double(detail.map.viewboxHeight ?? Int(VillageLayout.viewboxHeight))
-        // Built with reduce(into:), not Dictionary(uniqueKeysWithValues:) — the latter traps at
-        // runtime on a duplicate key, and both `coords` and `buildings` come straight off the
-        // network, so a malformed/duplicate slot from the server should never crash the map.
+
         let coordsBySlot: [Int: (cx: Double, cy: Double)] = {
             if let serverCoords = detail.map.coords, !serverCoords.isEmpty {
                 return serverCoords.reduce(into: [:]) { acc, c in acc[c.slot] = (cx: c.cx, cy: c.cy) }
@@ -239,17 +238,6 @@ struct VillageMapView: View {
         }()
         let backgroundPath = detail.map.background ?? VillageLayout.backgroundPath(tribe: detail.tribe, wallLevel: detail.wallLevel)
         let buildingsBySlot: [Int: VillageDetail.BuildingSlot] = detail.buildings.reduce(into: [:]) { acc, b in acc[b.slot] = b }
-        // First (earliest started_at) queue entry per slot — later chained entries for the same
-        // slot are still waiting behind it, so only this one is "in progress" right now.
-        //
-        // MUST filter to queueType == "building" first: village_buildings.slot and
-        // village_fields.slot both use the same 1-N numeric range (independent tables — see
-        // VillageController::queueProps()'s own `queue_type` field), so a resource-field upgrade
-        // and a building upgrade can be queued at the same time (with Plus's 2-slot queue) and
-        // land on the SAME slot number. Without this filter a field's queue entry could win the
-        // dictionary slot over a same-numbered building's own entry (or vice versa), which read
-        // as "здание не меняется на строящееся" — the building plot just silently never got its
-        // ConstructionBadge because the field's entry occupied that slot key instead.
         let queueBySlot: [Int: VillageDetail.QueueEntry] = detail.queue
             .filter { $0.queueType == "building" }
             .reduce(into: [:]) { acc, item in
@@ -257,47 +245,26 @@ struct VillageMapView: View {
                 acc[item.slot] = item
             }
 
-        // contentAspect: fits the map to the container's HEIGHT and derives width from the
-        // village layout's own viewbox ratio (same as ZoomableMap.vue's WORLD_W/WORLD_H camera)
-        // instead of stretching to exactly fill the portrait screen on both axes — that stretch
-        // was why the map read as "cropped to the screen, doesn't scroll left/right" (there was
-        // nothing wider than the screen TO scroll to). See ZoomableMapContainer's own doc comment.
-        //
-        // "карта при открытии должна ... выравнивать главное здание по центру" — look up the
-        // main building's own slot from the buildings payload (falls back to the classic layout's
-        // hardcoded slot 8, same fallback VillageLayout itself is for coordsBySlot) and convert
-        // its (cx, cy) into a 0...1 fraction of the viewbox for ZoomableMapContainer to center on.
         let mainBuildingSlot = detail.buildings.first(where: { $0.buildingKey == "main_building" })?.slot ?? 8
         let initialCenterFraction: CGPoint? = coordsBySlot[mainBuildingSlot].map {
             CGPoint(x: $0.cx / width, y: $0.cy / height)
         }
 
-        // ОБНОВЛЕНО: minZoom: 1.0 — карта не уменьшается меньше размера картинки.
-        // maxZoom: 2.0 — максимальное увеличение ровно ×2.
-        // Overlay: тир-бейдж + название деревни + карандаш — рендерятся ПОВЕРХ карты
-        // и НЕ зумируются вместе с ней (см. ZoomableMapContainer.overlay).
         return ZoomableMapContainer(
             minZoom: 1.0,
             maxZoom: 2.0,
             contentAspect: CGFloat(width / height),
             initialCenterFraction: initialCenterFraction,
             content: {
-                // Внутри content — ТОЛЬКО карта и маркеры зданий. Всё это зумится и панорамируется.
                 GeometryReader { geo in
                     let scaleX = geo.size.width / width
                     let scaleY = geo.size.height / height
 
                     ZStack {
-                        // No corner rounding/border here on purpose — the map now fills the screen
-                        // edge to edge between the nav bar and the bottom dock ("карту на весь
-                        // экран"), so a rounded card frame would just clip corners against the
-                        // screen's own edges instead of reading as a card.
                         backgroundImage(path: backgroundPath)
                             .frame(width: geo.size.width, height: geo.size.height)
                             .clipped()
 
-                        // Warm glow behind the main building (slot 8, centred on the classic
-                        // canvas) — same cosmetic touch Buildings.vue draws behind its own hub slot.
                         RadialGradient(
                             colors: [Color(red: 1, green: 0.77, blue: 0.42).opacity(0.35), Color(red: 1, green: 0.71, blue: 0.33).opacity(0)],
                             center: .center, startRadius: 1, endRadius: max(geo.size.width, geo.size.height) * 0.22
@@ -305,11 +272,6 @@ struct VillageMapView: View {
                         .frame(width: geo.size.width * 0.46, height: geo.size.height * 0.46)
                         .allowsHitTesting(false)
 
-                        // scaleX and scaleY are mathematically equal here (ZoomableMapContainer's
-                        // contentAspect keeps both axes multiplied by the very same effectiveZoom
-                        // factor — see its own doc comment), so either would do; min() is just a
-                        // defensive guard against the two drifting apart from float rounding, so a
-                        // marker's own art never gets stretched non-uniformly.
                         let markerScale = min(scaleX, scaleY)
                         ForEach(coordsBySlot.keys.sorted(), id: \.self) { slot in
                             if let coord = coordsBySlot[slot] {
@@ -319,70 +281,12 @@ struct VillageMapView: View {
                         }
                     }
                 }
-            },
-            overlay: {
-                // Overlay-слой: тир-бейдж и название деревни. Всегда поверх карты,
-                // НЕ участвует в жестах UIScrollView, размер/позиция на экране неизменны
-                // при любом zoomScale. Позиционируем через .frame + .alignment: .topLeading
-                // (вместо .position(x:y:) — так как теперь это отдельный слой, а не ZStack
-                // внутри карты).
-                VStack(alignment: .leading, spacing: 4) {
-                    // Village tier badge (Поселение/Деревня/Город/Мегаполис).
-                    if let tierLabel = detail.village.tierLabel, !tierLabel.isEmpty {
-                        Text(tierLabel)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(GameTheme.amberLight)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                    }
-
-                    // Village name + rename pencil, right below the tier badge — see
-                    // isRenaming's own doc comment.
-                    HStack(spacing: 4) {
-                        Text(detail.village.name)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .lineLimit(1)
-                        if detail.village.canRename {
-                            Button {
-                                renameText = detail.village.name
-                                renameError = nil
-                                isRenaming = true
-                            } label: {
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(GameTheme.amberLight)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                    Spacer()
-                }
-                // Прижимаем к верхнему-левому углу safe-area. Поскольку overlay рендерится
-                // уже ВНУТРИ safeSize (ZoomableMapContainer вычёл safeAreaInsets), здесь
-                // можно использовать просто padding.
-                .padding(.leading, 12)
-                .padding(.top, 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Не перехватываем тапы по пустому пространству — только сами элементы
-                // (карандаш) должны реагировать на нажатие, остальное прокидываем на карту.
-                // Если вы хотите, чтобы ЛЮБОЙ тап по области тир-бейджа НЕ проваливался на
-                // карту, навесьте .allowsHitTesting(true) на конкретный бейдж/строку.
-                .allowsHitTesting(true)
             }
         )
     }
 
-    // Local asset (bundled by build_ios_assets.py) when this is one of the 4 classic
-    // backgrounds — instant, no network round-trip — falling back to AsyncImage only for an
-    // admin-uploaded custom map template, which is arbitrary per-village server content the app
-    // can't bundle ahead of time. See VillageLayout.backgroundAssetName for the mapping.
+    // MARK: - Фон карты
+
     @ViewBuilder
     private func backgroundImage(path: String) -> some View {
         if let assetName = VillageLayout.backgroundAssetName(forPath: path) {
@@ -402,19 +306,8 @@ struct VillageMapView: View {
         }
     }
 
-    // Real building art (bundled locally — Assets.xcassets/GameAssets/Buildings, same
-    // g<gid>.gif files Buildings.vue draws on the web, converted to PNG by
-    // build_ios_assets.py) instead of a plain colored-circle placeholder. The main building
-    // (slot 8) renders larger, matching Buildings.vue's own bigger-slot-8 treatment; a plot
-    // with a live queue entry shows a construction badge (hammer + progress bar + countdown)
-    // instead of its level number.
-    //
-    // `scale` is mapCanvas's markerScale (how much bigger the map's rendered pixel size is than
-    // its base/unzoomed size right now) — every size/offset/line-width constant below is
-    // multiplied by it, mirroring how `.position(...)` already multiplies each marker's
-    // COORDINATES by scaleX/scaleY. Without this, only marker POSITIONS grew with pinch-zoom
-    // while each marker's own art stayed a fixed pixel size, so buildings visibly shrank relative
-    // to the map the more you zoomed in (reported: "здания не увеличиваются").
+    // MARK: - Маркер участка
+
     private func plotMarker(slot: Int, building: VillageDetail.BuildingSlot?, queueEntry: VillageDetail.QueueEntry?, scale: CGFloat) -> some View {
         let isBuilt = building?.buildingKey != nil
         let isDamaged = (building?.hp ?? 100) < 100
@@ -430,13 +323,17 @@ struct VillageMapView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: iconSize, height: iconSize)
                 } else {
+                    // Пустой участок — пунктирный круг с плюсом.
                     Circle()
-                        .fill(Color.black.opacity(0.4))
-                        .frame(width: 27 * scale, height: 27 * scale)
-                        .overlay(Circle().stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1 * scale, dash: [3 * scale, 2 * scale])))
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 34 * scale, height: 34 * scale)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 1.5 * scale, dash: [3 * scale, 2 * scale]))
+                        )
                     Text("+")
-                        .font(.system(size: 14 * scale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .font(.system(size: 18 * scale, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.9))
                 }
 
                 if let queueEntry {
@@ -470,32 +367,62 @@ struct VillageMapView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Экран ошибки
+
+    private func errorStateView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Text("Не удалось загрузить деревню")
+                .font(.headline)
+                .foregroundStyle(GameTheme.textPrimary)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(GameTheme.textMuted)
+                .multilineTextAlignment(.center)
+            Button("Повторить") {
+                if let id = selectedVillageID {
+                    Task { await villageSession.loadDetail(id: id, session) }
+                } else {
+                    Task { await villageSession.loadVillages(session) }
+                }
+            }
+            .buttonStyle(.gamePrimary)
+            .frame(width: 160)
+        }
+        .padding(32)
+        .background(Color.black.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 32)
+    }
+
+    // MARK: - Переименование
+
+    private func performRename() async {
+        guard let token = session.bearerToken else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let villageID = selectedVillageID else { return }
+        renameError = nil
+        isRenameSaving = true
+        defer { isRenameSaving = false }
+        do {
+            try await APIClient.shared.renameVillage(id: villageID, name: trimmed, token: token)
+            isRenaming = false
+            villageSession.refreshSelected(session)
+        } catch {
+            session.signOutIfUnauthorized(error)
+            renameError = (error as? LocalizedError)?.errorDescription ?? "Не удалось переименовать деревню."
+        }
+    }
 }
 
-// Not `private` — FieldsMapView.swift reuses both of these for its own tap-sheet/construction
-// overlay instead of duplicating them. Named distinctly from MessagesView.swift's own (unrelated,
-// file-private) `IdentifiableInt` wrapper to avoid a whole-module "invalid redeclaration" clash —
-// the two used to share the plain name `IdentifiableInt` until CI caught the collision once this
-// one stopped being `private` here.
+// MARK: - Вспомогательные типы
+
 struct IdentifiableSlotID: Identifiable { let id: Int }
 
-/// Live progress bar + countdown for one in-progress build-queue item — ticks from the real
-/// started_at/finishes_at window via TimelineView, matching ConstructionProgress.vue.
-///
-/// `scale` mirrors plotMarker's own zoom scale, so the badge grows/shrinks together with the
-/// icon it hangs off of instead of staying a fixed size while everything around it zooms.
+/// Live progress bar + countdown for one in-progress build-queue item.
 struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
     var scale: CGFloat = 1
 
-    // "весит на 00:00" — this is exactly that symptom: a previous round wrongly set
-    // `.withFractionalSeconds` here (guessing the server sent fractional-second timestamps; it
-    // never has — see Api\VillageController::queueProps()'s own doc comment), which made BOTH
-    // `started`/`finishes` below silently fall back to `.now` (via `?? .now`) on every render,
-    // since parsing then always failed. `span` (finishes - started) collapsed to ~0, so the
-    // progress bar/countdown permanently read as "just finishing" no matter how much time was
-    // actually left. Plain `ISO8601DateFormatter()` (no custom `.formatOptions`) is what
-    // actually matches Carbon's `toIso8601String()` output.
     private static let formatter = ISO8601DateFormatter()
 
     var body: some View {
@@ -531,10 +458,8 @@ struct ConstructionBadge: View {
     }
 }
 
-/// Merges BuildingActionMenu (built plot) + EmptyPlotOverlay (empty plot) + UpgradeModal (both)
-/// into one bottom sheet: fetches the same "what can go here" catalogue the web app's popups
-/// fetch, and — for a built plot, or once a candidate is picked on an empty one — shows the
-/// full build/upgrade detail card with a real build/upgrade action.
+// MARK: - SlotActionSheet / BuildingDetailCard
+
 private struct SlotActionSheet: View {
     @EnvironmentObject private var session: AuthSession
     @Environment(\.dismiss) private var dismiss
@@ -576,8 +501,6 @@ private struct SlotActionSheet: View {
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
-            // Built plot: go straight to that building's own card (its key is already known).
-            // Empty plot: show the icon grid until one candidate is picked.
             if let key = builtSlot?.buildingKey ?? selectedKey, let candidate = detail.catalogue.first(where: { $0.key == key }) {
                 ScrollView {
                     BuildingDetailCard(
@@ -661,10 +584,6 @@ private struct SlotActionSheet: View {
     }
 }
 
-/// The build/upgrade detail card itself — native port of UpgradeModal.vue's body (everything
-/// below its header/close button, which the enclosing sheet's own navigation bar already
-/// provides): level line, bonus box, requirements box, cost box with live have/need coloring,
-/// and the two action buttons.
 private struct BuildingDetailCard: View {
     let candidate: BuildingCandidate
     let village: VillageDetail.VillageInfo
