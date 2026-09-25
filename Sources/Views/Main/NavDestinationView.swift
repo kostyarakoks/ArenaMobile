@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// What each nav item (see NavItem.swift) opens. Most are still plain placeholders — real
-/// content lands here screen by screen as routes/api.php grows past auth. "Профиль", "Деревня"
-/// and "Карта" are wired to real data already (GameUser from AuthSession, VillageMapView's and
-/// WorldMapView's own network calls) — working end-to-end examples of the pattern for whichever
-/// tab gets built out next.
 struct NavDestinationView: View {
     let item: NavItem
     var selectItem: ((NavItem) -> Void)? = nil
@@ -14,12 +9,8 @@ struct NavDestinationView: View {
             switch item.id {
             case "profile":
                 ProfileScreen()
-            case "village":
-                // Недостижимая ветка: MainTabView при `selected.id == "village"`
-                // рендерит VillageMapView напрямую, минуя NavDestinationView
-                // (см. MainTabView.body). Оставляем корректный вызов для
-                // компилятора.
-                VillageMapView()
+            // case "village" УБРАН: MainTabView при `selected.id == "village"`
+            // рендерит VillageMapView() напрямую, минуя NavDestinationView.
             case "map":
                 WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
             case "fields":
