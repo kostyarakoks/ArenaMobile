@@ -4,9 +4,9 @@ import SwiftUI
 ///
 /// Layout:
 ///   • Карта заполняет ВЕСЬ экран.
-///   • `.safeAreaInset(edge: .top)` — тонкая полоса "📍 {имя деревни}".
-///   • `.overlay(alignment: .topTrailing)` — столбец круглых кнопок справа
-///     (урожай/настройки/почта/свиток), висит поверх карты.
+///   • `.safeAreaInset(edge: .top)` — полоса "📍 {имя деревни}" с градиентным
+///     фоном (сверху 50% чёрного → снизу 0%, прозрачный).
+///   • `.overlay(alignment: .topTrailing)` — столбец круглых кнопок справа.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -28,7 +28,6 @@ struct VillageMapView: View {
 
     var body: some View {
         ZStack {
-            // Карта (или заглушка, пока её нет).
             if let detail {
                 mapCanvas(detail)
                     .ignoresSafeArea()
@@ -36,16 +35,13 @@ struct VillageMapView: View {
                 Color.black.ignoresSafeArea()
             }
 
-            // Экран ошибки, если деревня не загрузилась.
             if let errorMessage, detail == nil, !isLoading {
                 errorStateView(errorMessage)
             }
         }
-        // Тонкая полоса с названием деревни — сразу под глобальным хедером.
         .safeAreaInset(edge: .top, spacing: 0) {
             villageNameBar
         }
-        // Столбец кнопок справа — висит поверх карты.
         .overlay(alignment: .topTrailing) {
             mapActionColumn
                 .padding(.trailing, 10)
@@ -55,7 +51,6 @@ struct VillageMapView: View {
         .task {
             await villageSession.loadIfNeeded(session)
         }
-        // Поллинг завершения строительства.
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -113,7 +108,7 @@ struct VillageMapView: View {
         }
     }
 
-    // MARK: - Полоса с названием деревни
+    // MARK: - Верхний бар с градиентом
 
     @ViewBuilder
     private var villageNameBar: some View {
@@ -144,26 +139,27 @@ struct VillageMapView: View {
                 Spacer()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 20) // запас под градиентный «хвост»
             .frame(maxWidth: .infinity)
-            .background(Color.black.opacity(0.72))
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(Color.black.opacity(0.35))
-                    .frame(height: 0.5)
-            }
+            .background(
+                // Градиент: сверху 50% чёрного → снизу 0% (прозрачный).
+                // .ignoresSafeArea(edges: .top) продлевает заливку в статус-бар.
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.5),
+                        Color.black.opacity(0.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .top)
+            )
         }
     }
 
     // MARK: - Столбец кнопок справа
 
-    /// Кнопки на карте: урожай, настройки, сообщения, квесты.
-    ///
-    /// ВАЖНО: в `NavItem` сейчас нет кейсов `.messages` / `.quests` — сообщения
-    /// и квесты живут внутри вкладки «Ещё». Поэтому кнопки пока ничего не
-    /// делают (плейсхолдеры). Когда в NavItem появятся нужные кейсы (или
-    /// отдельные колбэки onOpenMessages / onOpenQuests пробросятся из
-    /// MainTabView) — замените тела замыканий ниже.
     private var mapActionColumn: some View {
         VStack(spacing: 10) {
             mapActionButton(icon: "leaf.fill", badge: nil) {
@@ -325,7 +321,6 @@ struct VillageMapView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: iconSize, height: iconSize)
                 } else {
-                    // Пустой участок — пунктирный круг с плюсом.
                     Circle()
                         .fill(Color.black.opacity(0.35))
                         .frame(width: 34 * scale, height: 34 * scale)
