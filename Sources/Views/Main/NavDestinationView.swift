@@ -7,26 +7,19 @@ import SwiftUI
 /// tab gets built out next.
 struct NavDestinationView: View {
     let item: NavItem
-    // Lets a destination switch MainTabView's own active tab directly (currently used by
-    // WorldMapView's "tap your own village -> jump straight into it" shortcut, mirroring the
-    // web app's router.visit(route('village.buildings', ...))) — optional so every other call
-    // site (NavigationLink pushes from MapOverlayControls, the "Ещё" sheet, previews) doesn't
-    // need to supply one.
     var selectItem: ((NavItem) -> Void)? = nil
 
     var body: some View {
-        // "так же скрывается под хедером" — wrapped in a Group so ONE `.gameNavBarHidden()`
-        // (see GameTheme.swift's own doc comment) covers every branch below, instead of each of
-        // the 18+ screens needing to remember to hide the native bar individually the way only
-        // the three map screens used to. The four screens that had a REAL action button living
-        // in that native bar (MarketView, AllianceView, RallyPointView, MessagesView) now render
-        // their own in-content ScreenTitleBar instead — see each of those files.
         Group {
             switch item.id {
             case "profile":
                 ProfileScreen()
             case "village":
-                VillageMapView(selectItem: { selectItem?($0) })
+                // Недостижимая ветка: MainTabView при `selected.id == "village"`
+                // рендерит VillageMapView напрямую, минуя NavDestinationView
+                // (см. MainTabView.body). Оставляем корректный вызов для
+                // компилятора.
+                VillageMapView()
             case "map":
                 WorldMapView(onOwnVillageSelected: { selectItem?(.village) }, selectItem: { selectItem?($0) })
             case "fields":
@@ -100,14 +93,6 @@ private struct ProfileScreen: View {
                     if let tribe = user.tribe { LabeledContent("Племя", value: tribe) }
                 }
                 Section("Ресурсы") {
-                    // "в профиле убрать серебро, золото переименовать в кристалл" — `user.gold`
-                    // is the same premium-currency balance GameHeaderBar's crystalPill already
-                    // shows as 💎 (see its own doc comment) — the underlying field is still named
-                    // "gold" (inherited from the original TravianZ schema this was reskinned
-                    // from), but the game itself never surfaces a "золото" currency anywhere else
-                    // — only "кристаллы" — so this was just a leftover label. "Серебро" (silver)
-                    // isn't used by any current game system at all and is dropped outright rather
-                    // than relabeled.
                     LabeledContent("Кристаллы", value: "\(user.gold)")
                     LabeledContent("Очки арены", value: "\(user.arenaPoints)")
                 }
