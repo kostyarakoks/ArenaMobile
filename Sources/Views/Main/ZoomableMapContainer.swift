@@ -3,17 +3,14 @@ import UIKit
 
 /// Pinch-to-zoom + pan container.
 ///
-/// ИЗМЕНЕНО: baseSize теперь делает aspect FILL (карта покрывает viewport
-/// по обеим осям на минимальном зуме), а не aspect FIT по одной оси. Из-за
-/// прежнего поведения на iPhone карта получалась уже экрана — справа зияла
-/// чёрная полоса. Aspect fill всегда даёт контент >= viewport по обеим осям,
-/// поэтому при minZoom = 1.0 карта занимает весь экран без пустых зон.
+/// Aspect FILL: на минимальном зуме (1.0) карта покрывает viewport по обеим
+/// осям — без чёрных полос ни справа/слева, ни сверху/снизу. Одна из сторон
+/// при этом точно совпадает с краем экрана (aspect fill), вторая — уходит за
+/// край, создавая панораму.
 ///
-/// Если соотношение карты совпадает с экраном — aspect fill даёт ровно
-/// размер экрана. Если карта уже экрана (портретная, как 940:1672) —
-/// aspect fill вписывает по высоте и делает ширину шире экрана (панорама
-/// влево-вправо). Если карта шире экрана — наоборот, вписывает по ширине и
-/// даёт панораму вверх-вниз. В любом случае — без чёрных полос.
+/// bouncesZoom = false — жёсткий запрет на уменьшение ниже minZoom (1.0).
+/// Без этого UIScrollView разрешает «пружинку» ниже минимума при жесте
+/// пинч-ин — визуально это выглядит как уменьшение.
 struct ZoomableMapContainer<Content: View>: View {
     let content: () -> Content
     let minZoom: CGFloat
@@ -21,9 +18,6 @@ struct ZoomableMapContainer<Content: View>: View {
     var contentAspect: CGFloat?
     var initialCenterFraction: CGPoint?
 
-    // minZoom = 1.0 — запрет на уменьшение меньше базового размера
-    // (который уже покрывает весь экран).
-    // maxZoom = 2.0 — максимальное увеличение ×2.
     init(
         minZoom: CGFloat = 1.0,
         maxZoom: CGFloat = 2.0,
@@ -38,24 +32,17 @@ struct ZoomableMapContainer<Content: View>: View {
         self.content = content
     }
 
-    /// Aspect FILL: возвращает размер, который покрывает outerSize по обеим
-    /// осям, сохраняя пропорции contentAspect. Никогда не даёт размер меньше
-    /// outerSize ни по одной оси.
+    /// Aspect FILL: гарантирует, что контент покрывает outerSize по обеим осям.
     private func baseSize(for outerSize: CGSize) -> (width: CGFloat, height: CGFloat) {
         guard let aspect = contentAspect, aspect > 0, outerSize.width > 0, outerSize.height > 0 else {
             return (outerSize.width, outerSize.height)
         }
-
-        // Попытка №1: вписать по ширине. height = width / aspect.
-        // Если полученная высота >= высоты экрана — этого достаточно.
+        // Вписать по ширине. Если высота >= высоты экрана — хватит.
         let fitByWidthHeight = outerSize.width / aspect
         if fitByWidthHeight >= outerSize.height {
             return (outerSize.width, fitByWidthHeight)
         }
-
-        // Попытка №2: вписать по высоте. width = height * aspect.
-        // Сюда попадаем, когда карта уже экрана (портретная), и надо
-        // растянуть её по высоте, получив ширину больше экрана.
+        // Иначе вписать по высоте (даёт ширину шире экрана).
         let fitByHeightWidth = outerSize.height * aspect
         return (fitByHeightWidth, outerSize.height)
     }
@@ -75,8 +62,6 @@ struct ZoomableMapContainer<Content: View>: View {
     }
 }
 
-/// UIScrollView-backed host for a fixed-size SwiftUI subtree, giving it native
-/// anchor-preserving pinch-zoom and free panning.
 private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
     let minZoom: CGFloat
     let maxZoom: CGFloat
@@ -94,7 +79,10 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
         scrollView.zoomScale = min(max(1, minZoom), maxZoom)
-        scrollView.bouncesZoom = true
+        // Жёсткий запрет на уменьшение ниже minZoom. Без этого UIScrollView
+        // разрешает «резиновый» bounce ниже минимума при пинч-ине — визуально
+        // это выглядит как попытка уменьшить карту (даже если потом возвращает).
+        scrollView.bouncesZoom = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.backgroundColor = .clear
