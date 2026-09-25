@@ -1,17 +1,17 @@
 import SwiftUI
 
-/// The "Город" tab's real content.
+/// Экран карты деревни в режиме «полного экрана». Сам рендерит хедер,
+/// карту во весь экран, полосу с именем деревни, кнопки справа и нижний док.
+/// Используется в MainTabView вместо стандартного VStack для случая, когда
+/// активна вкладка «Деревня».
 ///
-/// Layout — карта расширяется на весь экран и ЗАХОДИТ под глобальный хедер
-/// (с ресурсами) и под нижний док MainTabView. Оба этих элемента MainTabView
-/// добавляет через `.safeAreaInset`, поэтому для карты мы явно игнорируем
-/// safe area ОТДЕЛЬНЫМ СЛОЕМ ZStack, а UI (имя деревни, кнопки) остаётся
-/// внутри safe area — то есть визуально сразу под хедером и выше дока.
+/// Карта растянута на весь экран через `.ignoresSafeArea()`, а хедер, полоса
+/// с именем, кнопки и док рисуются overlay-слоями поверх неё — благодаря
+/// этому карта заходит ПОД хедер (с градиентом 100%→0%) и ПОД док.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
-
-    var selectItem: (NavItem) -> Void = { _ in }
+    @EnvironmentObject private var navState: NavigationState
 
     @State private var tappedSlot: Int?
     @State private var lastConstructionRefreshAttempt: Date = .distantPast
@@ -30,15 +30,8 @@ struct VillageMapView: View {
     private var errorMessage: String? { villageSession.errorMessage }
 
     var body: some View {
-        // ZStack с тремя слоями:
-        //   1) карта — .ignoresSafeArea(), растянута на весь экран,
-        //      заходит под глобальный хедер и под нижний док;
-        //   2) полоса с именем деревни — прижата к верху safe area
-        //      (визуально сразу под глобальным хедером);
-        //   3) столбец кнопок — справа, чуть ниже полосы.
-        ZStack(alignment: .top) {
-            // Слой 1: карта. .ignoresSafeArea() на самой карте (не на ZStack,
-            // иначе полоса с именем тоже уедет под хедер).
+        ZStack {
+            // Слой 1: карта — на весь экран, включая области под хедером и доком.
             Group {
                 if let detail {
                     mapCanvas(detail)
@@ -48,18 +41,26 @@ struct VillageMapView: View {
             }
             .ignoresSafeArea()
 
-            // Слой 2: полоса с именем деревни — в safe area, под глобальным хедером.
-            villageNameBar
+            // Слой 2: хедер + полоса с именем + кнопки справа + док.
+            // Всё в safe area, поэтому не заезжает под системные бары.
+            VStack(spacing: 0) {
+                GameHeaderBar(selectItem: { navState.selected = $0 })
 
-            // Слой 3: кнопки справа, ниже полосы с именем.
-            HStack(alignment: .top, spacing: 0) {
-                Spacer()
-                mapActionColumn
-                    .padding(.trailing, 10)
-                    .padding(.top, 46) // отступ, чтобы не перекрывать полосу с именем
+                villageNameBar
+
+                // Кнопки справа — растягиваются на оставшееся место.
+                HStack(alignment: .top, spacing: 0) {
+                    Spacer()
+                    mapActionColumn
+                        .padding(.trailing, 10)
+                        .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                BottomDockView()
             }
 
-            // Слой 4: экран ошибки, если деревня не загрузилась.
+            // Слой 3: экран ошибки, если деревня не загрузилась.
             if let errorMessage, detail == nil, !isLoading {
                 errorStateView(errorMessage)
             }
@@ -125,7 +126,7 @@ struct VillageMapView: View {
         }
     }
 
-    // MARK: - Полоса с именем деревни (в safe area, под глобальным хедером)
+    // MARK: - Полоса с именем деревни
 
     @ViewBuilder
     private var villageNameBar: some View {
@@ -156,8 +157,7 @@ struct VillageMapView: View {
                 Spacer()
             }
             .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 20)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(
                 LinearGradient(
@@ -176,18 +176,10 @@ struct VillageMapView: View {
 
     private var mapActionColumn: some View {
         VStack(spacing: 10) {
-            mapActionButton(icon: "leaf.fill", badge: nil) {
-                // TODO: открыть экран полей/ресурсов
-            }
-            mapActionButton(icon: "gearshape.fill", badge: nil) {
-                // TODO: открыть настройки
-            }
-            mapActionButton(icon: "envelope.fill", badge: 1) {
-                // TODO: открыть сообщения
-            }
-            mapActionButton(icon: "scroll.fill", badge: nil) {
-                // TODO: открыть квесты
-            }
+            mapActionButton(icon: "leaf.fill", badge: nil) {}
+            mapActionButton(icon: "gearshape.fill", badge: nil) {}
+            mapActionButton(icon: "envelope.fill", badge: 1) {}
+            mapActionButton(icon: "scroll.fill", badge: nil) {}
         }
     }
 
@@ -262,8 +254,6 @@ struct VillageMapView: View {
             CGPoint(x: $0.cx / width, y: $0.cy / height)
         }
 
-        // minZoom 1.0 — на нём карта (aspect fill) ровно покрывает экран,
-        // уменьшение ниже запрещено. maxZoom 2.0 — увеличение до ×2.
         return ZoomableMapContainer(
             minZoom: 1.0,
             maxZoom: 2.0,
