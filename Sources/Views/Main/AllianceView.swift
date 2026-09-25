@@ -187,8 +187,10 @@ private struct CreateAllianceSheet: View {
                 TextField("Название", text: $name)
                 TextField("Тег (до 8 символов)", text: $tag)
                     .onChange(of: tag) { newValue in
-                        // Single-parameter onChange — this project's deployment target is iOS 16
-                        // (see LoginView.swift's serverURL field for the same note).
+                        // Single-parameter onChange — kept for consistency with the rest of the
+                        // codebase even though the deployment target ("проверить что бы проект
+                        // был под минимум ios18" — see project.yml) would allow the newer
+                        // two-parameter (oldValue, newValue) form too.
                         if newValue.count > 8 { tag = String(newValue.prefix(8)) }
                     }
                 TextField("Описание (необязательно)", text: $description, axis: .vertical)

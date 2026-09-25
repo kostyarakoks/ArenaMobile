@@ -115,7 +115,7 @@ private struct ProfileScreen: View {
         .gameScreenBackground()
         .withScreenTitle { ScreenTitleBar("Профиль") }
         .task { await loadPresets() }
-        .onChange(of: photoItem) { _, newItem in
+        .onChange(of: photoItem) { newItem in
             Task { await handlePickedPhoto(newItem) }
         }
     }
