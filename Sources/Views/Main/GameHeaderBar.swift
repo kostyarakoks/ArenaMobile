@@ -49,22 +49,16 @@ struct GameHeaderBar: View {
         .padding(.top, 8)
         .padding(.bottom, 14) // запас, чтобы градиент успел «раствориться» до контента
         .background(
-            // Градиент: сверху 50% чёрного → снизу 0% (прозрачный).
-            // .ignoresSafeArea(edges: .top) продлевает заливку в статус-бар.
-            //
-            // Убрал overlay с золотой линией снизу: раньше он читался как «граница
-            // шапки», теперь же хедер плавно уходит в контент и жёсткая линия ломала
-            // бы этот переход.
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.5),
-                    Color.black.opacity(0.0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .top)
-        )
+    LinearGradient(
+        colors: [
+            Color.black.opacity(1.0),   // БЫЛО 0.5, теперь 1.0
+            Color.black.opacity(0.0),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+    .ignoresSafeArea(edges: .top)
+)
     }
 
     private var crystalPill: some View {

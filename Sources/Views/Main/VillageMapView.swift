@@ -1,13 +1,20 @@
 import SwiftUI
 
-/// Экран карты деревни в режиме «полного экрана». Сам рендерит хедер,
-/// карту во весь экран, полосу с именем деревни, кнопки справа и нижний док.
-/// Используется в MainTabView вместо стандартного VStack для случая, когда
-/// активна вкладка «Деревня».
+/// Экран карты деревни в режиме «полного экрана».
 ///
-/// Карта растянута на весь экран через `.ignoresSafeArea()`, а хедер, полоса
-/// с именем, кнопки и док рисуются overlay-слоями поверх неё — благодаря
-/// этому карта заходит ПОД хедер (с градиентом 100%→0%) и ПОД док.
+/// Структура:
+///   • ZStack — корневой контейнер.
+///   • Слой 1 (нижний) — карта с `.ignoresSafeArea()`. Растягивается
+///     на ВЕСЬ экран, включая области под глобальным хедером и под
+///     нижним доком. Карта видна за полупрозрачной частью градиента
+///     хедера и под доком.
+///   • Слой 2 (верхний) — VStack { хедер, полоса с именем, док } БЕЗ
+///     .ignoresSafeArea(): этот слой остаётся в safe area, то есть
+///     хедер начинается под статус-баром, док заканчивается над
+///     home-индикатором.
+///   • Полоса с именем деревни — БЕЗ градиента, только текст с тенью
+///     и иконкой.
+///   • Столбец кнопок справа — overlay поверх ZStack, ниже полосы.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -31,7 +38,7 @@ struct VillageMapView: View {
 
     var body: some View {
         ZStack {
-            // Слой 1: карта — на весь экран, включая области под хедером и доком.
+            // Слой 1: карта на весь экран.
             Group {
                 if let detail {
                     mapCanvas(detail)
@@ -41,29 +48,27 @@ struct VillageMapView: View {
             }
             .ignoresSafeArea()
 
-            // Слой 2: хедер + полоса с именем + кнопки справа + док.
-            // Всё в safe area, поэтому не заезжает под системные бары.
+            // Слой 2: UI-элементы в safe area.
             VStack(spacing: 0) {
                 GameHeaderBar(selectItem: { navState.selected = $0 })
 
                 villageNameBar
 
-                // Кнопки справа — растягиваются на оставшееся место.
-                HStack(alignment: .top, spacing: 0) {
-                    Spacer()
-                    mapActionColumn
-                        .padding(.trailing, 10)
-                        .padding(.top, 8)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spacer(minLength: 0)
 
                 BottomDockView()
             }
 
-            // Слой 3: экран ошибки, если деревня не загрузилась.
+            // Слой 3: экран ошибки.
             if let errorMessage, detail == nil, !isLoading {
                 errorStateView(errorMessage)
             }
+        }
+        // Кнопки справа — поверх ZStack, ниже хедера и полосы с именем.
+        .overlay(alignment: .topTrailing) {
+            mapActionColumn
+                .padding(.trailing, 10)
+                .padding(.top, 110)
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
@@ -126,7 +131,7 @@ struct VillageMapView: View {
         }
     }
 
-    // MARK: - Полоса с именем деревни
+    // MARK: - Полоса с именем деревни (БЕЗ градиента)
 
     @ViewBuilder
     private var villageNameBar: some View {
@@ -135,12 +140,13 @@ struct VillageMapView: View {
                 Image(systemName: "mappin.circle.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(GameTheme.amberLight)
+                    .shadow(color: .black.opacity(0.8), radius: 2)
 
                 Text(detail.village.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .shadow(color: .black.opacity(0.9), radius: 3)
 
                 if detail.village.canRename {
                     Button {
@@ -151,24 +157,17 @@ struct VillageMapView: View {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 14))
                             .foregroundStyle(GameTheme.amberLight.opacity(0.9))
+                            .shadow(color: .black.opacity(0.8), radius: 2)
                     }
                 }
 
                 Spacer()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.5),
-                        Color.black.opacity(0.0),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            // БЕЗ фонового градиента — просто текст поверх карты с тенью,
+            // чтобы читалось на любом фоне.
         }
     }
 
@@ -417,7 +416,7 @@ struct VillageMapView: View {
     }
 }
 
-// MARK: - Вспомогательные типы
+// MARK: - Вспомогательные типы (без изменений)
 
 struct IdentifiableSlotID: Identifiable { let id: Int }
 
@@ -460,7 +459,7 @@ struct ConstructionBadge: View {
     }
 }
 
-// MARK: - SlotActionSheet / BuildingDetailCard
+// MARK: - SlotActionSheet / BuildingDetailCard (без изменений)
 
 private struct SlotActionSheet: View {
     @EnvironmentObject private var session: AuthSession

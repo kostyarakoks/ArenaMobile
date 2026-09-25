@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Native port of resources/js/Components/BottomNav.vue.
-///
-/// Для экрана деревни (selected.id == "village") используется VillageMapView
-/// в режиме «полного экрана» — он сам рендерит хедер, карту во весь экран,
-/// полосу с именем деревни и нижний док, чтобы карта уходила ПОД них. Для
-/// всех остальных экранов — стандартный VStack: хедер сверху, NavigationStack
-/// между ним и доком, док снизу.
 struct MainTabView: View {
     @EnvironmentObject private var session: AuthSession
     @StateObject private var villageSession = VillageSession()
