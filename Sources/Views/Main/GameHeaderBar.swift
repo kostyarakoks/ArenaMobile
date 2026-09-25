@@ -5,18 +5,28 @@ import SwiftUI
 /// GameLayout.vue's own always-present header on the web app (resources/js/Layouts/
 /// GameLayout.vue) rather than only showing on the village map like this used to.
 ///
-/// Прозрачный градиентный фон: сверху 50% чёрного → снизу 0% (прозрачный). Карта/фон
-/// под хедером видны сквозь нижнюю часть — так же, как у полосы с названием деревни в
-/// VillageMapView. Раньше был плотный непрозрачный градиент + золотая линия снизу —
-/// это читалось как отдельная «шапка», а не как часть общего экрана.
+/// Два варианта фона — `style` ниже:
+///   • `.solid` — плотный непрозрачный градиент + тонкая золотая линия снизу. Это тот самый
+///     "как было раньше" верхний навбар обычных экранов (профиль, герой, рынок, ...) —
+///     на них под хедером нет ничего, что стоило бы показывать сквозь него, так что
+///     прозрачность там только мешает читаемости цифр.
+///   • `.transparent` — карта/фон видны сквозь нижнюю часть градиента. Специально оставлен
+///     как есть для VillageMapView (только там), где хедер стоит поверх карты деревни на
+///     весь экран и должен читаться как часть сцены, а не как отдельная плашка сверху.
 struct GameHeaderBar: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
+
+    enum Style {
+        case solid
+        case transparent
+    }
 
     // Lets the crystal pill jump to the Shop, same as MapOverlayControls' own crystalBadge used
     // to (see its removal note below) — passed down from MainTabView the same way selectItem
     // reaches every other screen (see MainTabView.body's own doc comment).
     var selectItem: (NavItem) -> Void = { _ in }
+    var style: Style = .solid
 
     var body: some View {
         VStack(spacing: 4) {
@@ -47,18 +57,23 @@ struct GameHeaderBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
-        .padding(.bottom, 14) // запас, чтобы градиент успел «раствориться» до контента
-        .background(
-    LinearGradient(
-        colors: [
-            Color.black.opacity(1.0),   // БЫЛО 0.5, теперь 1.0
-            Color.black.opacity(0.0),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-    .ignoresSafeArea(edges: .top)
-)
+        .padding(.bottom, style == .transparent ? 14 : 8) // прозрачному нужен запас, чтобы градиент успел «раствориться» до контента
+        .background(backgroundLayer)
+    }
+
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        switch style {
+        case .solid:
+            LinearGradient(colors: [GameTheme.panelTop, GameTheme.background], startPoint: .top, endPoint: .bottom)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(GameTheme.amber.opacity(0.35)).frame(height: 1)
+                }
+                .ignoresSafeArea(edges: .top)
+        case .transparent:
+            LinearGradient(colors: [Color.black.opacity(1.0), Color.black.opacity(0.0)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var crystalPill: some View {
@@ -141,7 +156,7 @@ struct AvatarBadge: View {
             switch user?.avatarKind {
             case "upload":
                 if let urlString = user?.avatarUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().aspectRatio(contentMode: .fill)
                         } else {

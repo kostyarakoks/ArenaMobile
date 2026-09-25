@@ -456,7 +456,7 @@ struct WorldMapView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
                     ForEach(preview.buildings) { b in
                         VStack(spacing: 2) {
-                            AsyncImage(url: buildingIconURL(gid: b.gid)) { phase in
+                            CachedAsyncImage(url: buildingIconURL(gid: b.gid)) { phase in
                                 if case .success(let image) = phase {
                                     image.resizable().aspectRatio(contentMode: .fit)
                                 } else {

@@ -143,7 +143,7 @@ struct FieldsMapView: View {
     // into, with a plain fallback fill while it loads.
     private var backgroundImage: some View {
         let url = URL(string: FieldLayout.backgroundPath, relativeTo: APIClient.shared.baseURL)?.absoluteURL
-        return AsyncImage(url: url) { phase in
+        return CachedAsyncImage(url: url) { phase in
             switch phase {
             case .success(let image):
                 image.resizable().aspectRatio(contentMode: .fill)

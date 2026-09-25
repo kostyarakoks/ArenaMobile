@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The "Герой" tab's real content — Api\HeroController (travianz-laravel), same EquipmentService
 /// the web Hero/Show.vue page uses. Stats + point allocation, equip/unequip from owned gear, and
@@ -48,6 +49,7 @@ struct HeroView: View {
         } else if let detail {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    heroBanner
                     statsSection(detail.hero)
                     pointsSection(detail.hero)
                     equipmentSection(detail.equipment)
@@ -60,6 +62,28 @@ struct HeroView: View {
         } else {
             Color.clear
         }
+    }
+
+    // "гер[ой] страницы оформить в стиле как в скрине с рынком" — тот же приём, что у
+    // MarketView: широкая иллюстрация прямо под заголовком экрана, до всех карточек с данными.
+    // `Image("HeroBanner")` — на будущее, когда придёт реальная картинка героя/локации (обещали
+    // прислать отдельно); пока её нет, показываем тот же navy-панель-с-рамкой стиль, что и у
+    // остальных карточек на этом экране, чтобы пустое место не выглядело как баг.
+    private var heroBanner: some View {
+        ZStack {
+            if UIImage(named: "HeroBanner") != nil {
+                Image("HeroBanner")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                LinearGradient(colors: [GameTheme.panelTop, GameTheme.panelBottom], startPoint: .top, endPoint: .bottom)
+                Text("🦸").font(.system(size: 44)).opacity(0.35)
+            }
+        }
+        .frame(height: 140)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(GameTheme.panelBorder, lineWidth: 1))
     }
 
     private func statsSection(_ hero: HeroDetail.Info) -> some View {
@@ -129,28 +153,27 @@ struct HeroView: View {
                 .font(.caption)
                 .foregroundStyle(GameTheme.textSecondary)
 
-            slotRow(label: "Оружие", equipped: equipment.equipped.weapon, owned: equipment.owned.weapon, slot: "weapon")
-            slotRow(label: "Броня", equipped: equipment.equipped.armor, owned: equipment.owned.armor, slot: "armor")
-            slotRow(label: "Амулет", equipped: equipment.equipped.trinket, owned: equipment.owned.trinket, slot: "trinket")
+            // Каждый слот — отдельная карточка со своей рамкой и своей кнопкой во всю ширину
+            // снизу (как карточки предложений на "Рынке"), а не одна общая панель на все три
+            // слота сразу.
+            slotCard(label: "Оружие", equipped: equipment.equipped.weapon, owned: equipment.owned.weapon, slot: "weapon")
+            slotCard(label: "Броня", equipped: equipment.equipped.armor, owned: equipment.owned.armor, slot: "armor")
+            slotCard(label: "Амулет", equipped: equipment.equipped.trinket, owned: equipment.owned.trinket, slot: "trinket")
         }
-        .gamePanel(padding: 14)
     }
 
-    private func slotRow(label: String, equipped: HeroDetail.Item?, owned: [HeroDetail.Item], slot: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
-            if let equipped {
-                HStack {
-                    Text("\(equipped.icon) \(equipped.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
-                    Spacer()
-                    Button("Снять") { Task { await unequip(slot: slot) } }
-                        .buttonStyle(.gameSecondary)
-                        .fixedSize()
-                        .disabled(isBusy)
+    private func slotCard(label: String, equipped: HeroDetail.Item?, owned: [HeroDetail.Item], slot: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(label).font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
+                Spacer()
+                if let equipped {
+                    Text("\(equipped.icon) \(equipped.label)").font(.footnote).foregroundStyle(GameTheme.amberLight)
+                } else {
+                    Text("Пусто").font(.footnote).foregroundStyle(GameTheme.textMuted)
                 }
-            } else {
-                Text("Пусто").font(.footnote).foregroundStyle(GameTheme.textMuted)
             }
+
             if !owned.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -171,25 +194,33 @@ struct HeroView: View {
                     }
                 }
             }
+
+            if equipped != nil {
+                Button("Снять") { Task { await unequip(slot: slot) } }
+                    .buttonStyle(.gamePrimary)
+                    .disabled(isBusy)
+            }
         }
+        .gamePanel(padding: 14)
     }
 
     private func craftSection(_ craftable: [HeroDetail.CraftableItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Скрафтить").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
             ForEach(craftable) { item in
-                HStack {
-                    Text("\(item.icon) \(item.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
-                    Spacer()
-                    Text(costLabel(item.cost)).font(.caption2).foregroundStyle(GameTheme.textSecondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("\(item.icon) \(item.label)").font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
+                        Spacer()
+                        Text(costLabel(item.cost)).font(.caption2).foregroundStyle(GameTheme.textSecondary)
+                    }
                     Button("Создать") { Task { await craft(itemKey: item.key) } }
                         .buttonStyle(.gamePrimary)
-                        .fixedSize()
                         .disabled(isBusy || villages.isEmpty)
                 }
+                .gamePanel(padding: 14)
             }
         }
-        .gamePanel(padding: 14)
     }
 
     private func costLabel(_ cost: [String: Int]) -> String {

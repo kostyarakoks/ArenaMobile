@@ -72,62 +72,64 @@ struct SplashView: View {
 
 /// Орнаментный прогресс-бар в стиле игры.
 ///
-/// Собран из ТРЁХ отдельных спрайтов, которые вы прислали (на одной
-/// картинке там несколько слоёв). Разрежьте её на три `.imageset`:
+/// Собран из трёх присланных спрайтов (нарезаны из одного PNG по прозрачным
+/// промежуткам между слоями — сама рамка, синяя подложка, золотое
+/// заполнение): "ProgressBarFrame", "ProgressBarTrack", "ProgressBarFill".
+/// Раньше эти три имени ссылались в никуда (картинок не было в
+/// Assets.xcassets, `Image(...)` тихо рисовал пустоту) — сейчас файлы на
+/// месте, и вместо временной замены на `Capsule()` здесь снова настоящие
+/// картинки.
 ///
-///   • "ProgressBarFrame" — верхний ornate-бордер (золотая рама с
-///     узорами по краям и ромбиками посередине). Это самый высокий слой,
-///     рисуется поверх всего.
-///
-///   • "ProgressBarTrack" — синяя полоска (фон-трек, на который
-///     накладывается заполнение). С закруглениями по краям.
-///
-///   • "ProgressBarFill"  — золотая полоска (заполнение, растёт слева
-///     направо в такт с `progress`).
-///
-/// Если у вас сейчас всё в одном файле — назовите его как угодно и
-/// покажите — я подскажу, как нарезать его на три части в Figma/Preview.
-///
-/// Если ассетов пока нет вообще — замените три `Image(...)` на простые
-/// `Capsule()` с градиентами, будет работать без картинок.
+/// Рамка ("ProgressBarFrame") — гораздо более "толстый" декоративный
+/// элемент, чем трек/заполнение внутри неё: между двумя её тонкими синими
+/// направляющими линиями (замерено по пиксельным координатам в исходном
+/// PNG — 2130×302) есть полость, где и должны лежать трек с заполнением,
+/// а не просто "по центру рамки". `cavity…Fraction` ниже — координаты этой
+/// полости в долях от размера рамки, так они остаются верными на любой
+/// ширине экрана (рамка масштабируется по своим пропорциям, полость вместе
+/// с ней).
 struct OrnateProgressBar: View {
     let progress: Double
 
+    /// Полость между направляющими линиями рамки: 23.2%–69.5% высоты рамки,
+    /// с отступами 11.7% слева/справа (где рамку огибают декоративные
+    /// наконечники).
+    private let cavityTopFraction: CGFloat = 0.232
+    private let cavityBottomFraction: CGFloat = 0.695
+    private let cavityInsetFraction: CGFloat = 0.117
+
     var body: some View {
-        ZStack {
-            // Слой 1: трек (синий). Отступы по бокам — чтобы орнамент
-            // рамы не перекрывал края.
-            Image("ProgressBarTrack")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(height: 20)
-                .clipShape(Capsule())
-                .padding(.horizontal, 30)
+        Image("ProgressBarFrame")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay {
+                GeometryReader { geo in
+                    let cavityHeight = geo.size.height * (cavityBottomFraction - cavityTopFraction)
+                    let cavityY = geo.size.height * (cavityTopFraction + cavityBottomFraction) / 2
+                    let inset = geo.size.width * cavityInsetFraction
+                    let cavityWidth = max(0, geo.size.width - inset * 2)
+                    let fillWidth = max(0, cavityWidth * progress)
 
-            // Слой 2: золотое заполнение — растёт слева направо.
-            GeometryReader { geo in
-                HStack(spacing: 0) {
-                    Image("ProgressBarFill")
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: max(0, (geo.size.width - 60) * progress), height: 20)
-                        .clipShape(Capsule())
-                    Spacer(minLength: 0)
+                    ZStack(alignment: .leading) {
+                        Image("ProgressBarTrack")
+                            .resizable()
+                            .frame(width: cavityWidth, height: cavityHeight)
+
+                        // Растянута на всю ширину трека (чтобы скруглённые концы не
+                        // сплющивались при малом progress), а видна только левая часть —
+                        // через .mask, а не через обрезку ширины самой картинки.
+                        Image("ProgressBarFill")
+                            .resizable()
+                            .frame(width: cavityWidth, height: cavityHeight)
+                            .mask(alignment: .leading) {
+                                Rectangle().frame(width: fillWidth)
+                            }
+                    }
+                    .position(x: geo.size.width / 2, y: cavityY)
                 }
-                .padding(.horizontal, 30)
             }
-            .frame(height: 20)
             .allowsHitTesting(false)
-
-            // Слой 3: орнаментная рама — рисуется поверх всего, растягивается
-            // по ширине.
-            Image("ProgressBarFrame")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .allowsHitTesting(false)
-        }
-        .frame(height: 44)
     }
 }
 

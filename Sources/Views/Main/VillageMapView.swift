@@ -62,7 +62,7 @@ struct VillageMapView: View {
 
             // Слой 2: UI-элементы в safe area.
             VStack(spacing: 0) {
-                GameHeaderBar(selectItem: { navState.selected = $0 })
+                GameHeaderBar(selectItem: { navState.selected = $0 }, style: .transparent)
 
                 villageNameBar
 
@@ -314,7 +314,7 @@ struct VillageMapView: View {
                 .aspectRatio(contentMode: .fill)
         } else {
             let url = URL(string: path, relativeTo: APIClient.shared.baseURL)?.absoluteURL
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fill)
