@@ -15,10 +15,22 @@ import SwiftUI
 ///   • Полоса с именем деревни — БЕЗ градиента, только текст с тенью
 ///     и иконкой.
 ///   • Столбец кнопок справа — overlay поверх ZStack, ниже полосы.
+///
+/// Зум:
+///   • minZoom = 1.3 — минимальное уменьшение.
+///   • maxZoom = 4.0 — максимум ×4. При запуске карта открывается
+///     сразу в 4× (см. `VillageMapViewState.zoomScale`).
+///   • Состояние зума/панорамы хранится в `mapState`, который живёт в
+///     `MainTabView` — при уходе на другую вкладку и возврате обратно
+///     карта открывается с теми же зумом и координатами.
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
     @EnvironmentObject private var navState: NavigationState
+
+    /// Состояние зума/панорамы. Живёт в MainTabView (@State) и переживает
+    /// уход с вкладки «Деревня».
+    let mapState: VillageMapViewState
 
     @State private var tappedSlot: Int?
     @State private var lastConstructionRefreshAttempt: Date = .distantPast
@@ -253,11 +265,15 @@ struct VillageMapView: View {
             CGPoint(x: $0.cx / width, y: $0.cy / height)
         }
 
+        // minZoom 1.3 — минимальное уменьшение (как просили).
+        // maxZoom 4.0 — при запуске карта открывается в 4× (совпадает
+        // с дефолтом state.zoomScale в VillageMapViewState).
         return ZoomableMapContainer(
-            minZoom: 1.0,
-            maxZoom: 2.0,
+            minZoom: 1.3,
+            maxZoom: 4.0,
             contentAspect: CGFloat(width / height),
             initialCenterFraction: initialCenterFraction,
+            state: mapState,
             content: {
                 GeometryReader { geo in
                     let scaleX = geo.size.width / width
@@ -416,7 +432,7 @@ struct VillageMapView: View {
     }
 }
 
-// MARK: - Вспомогательные типы (без изменений)
+// MARK: - Вспомогательные типы
 
 struct IdentifiableSlotID: Identifiable { let id: Int }
 
@@ -459,7 +475,7 @@ struct ConstructionBadge: View {
     }
 }
 
-// MARK: - SlotActionSheet / BuildingDetailCard (без изменений)
+// MARK: - SlotActionSheet / BuildingDetailCard
 
 private struct SlotActionSheet: View {
     @EnvironmentObject private var session: AuthSession

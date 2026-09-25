@@ -5,10 +5,15 @@ struct MainTabView: View {
     @StateObject private var villageSession = VillageSession()
     @StateObject private var navState = NavigationState()
 
+    /// Состояние карты деревни. Хранится ЗДЕСЬ (а не внутри VillageMapView),
+    /// потому что VillageMapView пересоздаётся при каждом переходе на вкладку
+    /// — а зум и панорама должны сохраняться между переходами.
+    @State private var mapState = VillageMapViewState()
+
     var body: some View {
         Group {
             if navState.selected.id == "village" {
-                VillageMapView()
+                VillageMapView(mapState: mapState)
             } else {
                 standardLayout
             }

@@ -1,48 +1,50 @@
 import SwiftUI
 import UIKit
 
-/// Pinch-to-zoom + pan container.
+/// Pinch-to-zoom + pan container с сохранением состояния.
 ///
-/// Aspect FILL: на минимальном зуме (1.0) карта покрывает viewport по обеим
-/// осям — без чёрных полос ни справа/слева, ни сверху/снизу. Одна из сторон
-/// при этом точно совпадает с краем экрана (aspect fill), вторая — уходит за
-/// край, создавая панораму.
+/// Отличие от предыдущей версии: контейнер принимает ссылку на
+/// `VillageMapViewState` и через неё:
+///   • читает `zoomScale`/`contentOffset` при первом показе (если
+///     `hasBeenInitialized == true`) либо центрирует на
+///     `initialCenterFraction` (первый раз);
+///   • пишет обратно в delegate-колбэках, чтобы при возврате на вкладку
+///     карта открылась в том же положении и с тем же зумом.
 ///
-/// bouncesZoom = false — жёсткий запрет на уменьшение ниже minZoom (1.0).
-/// Без этого UIScrollView разрешает «пружинку» ниже минимума при жесте
-/// пинч-ин — визуально это выглядит как уменьшение.
+/// Aspect FILL: на минимальном зуме карта покрывает viewport по обеим осям
+/// без чёрных полос.
 struct ZoomableMapContainer<Content: View>: View {
     let content: () -> Content
     let minZoom: CGFloat
     let maxZoom: CGFloat
     var contentAspect: CGFloat?
     var initialCenterFraction: CGPoint?
+    let state: VillageMapViewState
 
     init(
         minZoom: CGFloat = 1.0,
         maxZoom: CGFloat = 2.0,
         contentAspect: CGFloat? = nil,
         initialCenterFraction: CGPoint? = nil,
+        state: VillageMapViewState,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.minZoom = minZoom
         self.maxZoom = maxZoom
         self.contentAspect = contentAspect
         self.initialCenterFraction = initialCenterFraction
+        self.state = state
         self.content = content
     }
 
-    /// Aspect FILL: гарантирует, что контент покрывает outerSize по обеим осям.
     private func baseSize(for outerSize: CGSize) -> (width: CGFloat, height: CGFloat) {
         guard let aspect = contentAspect, aspect > 0, outerSize.width > 0, outerSize.height > 0 else {
             return (outerSize.width, outerSize.height)
         }
-        // Вписать по ширине. Если высота >= высоты экрана — хватит.
         let fitByWidthHeight = outerSize.width / aspect
         if fitByWidthHeight >= outerSize.height {
             return (outerSize.width, fitByWidthHeight)
         }
-        // Иначе вписать по высоте (даёт ширину шире экрана).
         let fitByHeightWidth = outerSize.height * aspect
         return (fitByHeightWidth, outerSize.height)
     }
@@ -55,6 +57,7 @@ struct ZoomableMapContainer<Content: View>: View {
                 maxZoom: maxZoom,
                 contentSize: CGSize(width: base.width, height: base.height),
                 initialCenterFraction: initialCenterFraction,
+                state: state,
                 content: content
             )
             .frame(width: outer.size.width, height: outer.size.height)
@@ -67,10 +70,11 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
     let maxZoom: CGFloat
     let contentSize: CGSize
     let initialCenterFraction: CGPoint?
+    let state: VillageMapViewState
     let content: () -> Content
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(rootView: content())
+        Coordinator(rootView: content(), state: state)
     }
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -78,10 +82,12 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
-        scrollView.zoomScale = min(max(1, minZoom), maxZoom)
-        // Жёсткий запрет на уменьшение ниже minZoom. Без этого UIScrollView
-        // разрешает «резиновый» bounce ниже минимума при пинч-ине — визуально
-        // это выглядит как попытка уменьшить карту (даже если потом возвращает).
+        // Ставим стартовый зум из state. Реальное центрирование и
+        // восстановление contentOffset произойдут в updateUIView, когда
+        // у scrollView появятся настоящие bounds.
+        scrollView.zoomScale = min(max(state.zoomScale, minZoom), maxZoom)
+        // Жёсткий запрет на bounce ниже minZoom: пользователь физически
+        // не сможет сжать карту меньше 1.3.
         scrollView.bouncesZoom = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
@@ -122,29 +128,53 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             context.coordinator.heightConstraint?.constant = contentSize.height
         }
 
-        if !context.coordinator.didSetInitialOffset,
-           let fraction = initialCenterFraction,
+        // Однократное применение состояния, когда у scrollView уже есть
+        // настоящие bounds и contentSize.
+        if !context.coordinator.didApplyInitialState,
            scrollView.bounds.width > 0, scrollView.bounds.height > 0,
            scrollView.contentSize.width > 0, scrollView.contentSize.height > 0 {
-            context.coordinator.didSetInitialOffset = true
-            scrollView.contentOffset = Coordinator.clampedOffset(
-                target: CGPoint(x: fraction.x * scrollView.contentSize.width - scrollView.bounds.width / 2,
-                                 y: fraction.y * scrollView.contentSize.height - scrollView.bounds.height / 2),
-                scrollView: scrollView
-            )
+            context.coordinator.didApplyInitialState = true
+
+            let zoom = min(max(state.zoomScale, minZoom), maxZoom)
+            scrollView.zoomScale = zoom
+            // После установки zoomScale UIScrollView пересчитывает
+            // contentSize = baseSize * zoomScale (hosted view имеет
+            // фиксированные width/height constraints) — синхронно.
+
+            if state.hasBeenInitialized, state.contentOffset != .zero {
+                // Восстанавливаем то, что игрок оставил в прошлый раз.
+                scrollView.contentOffset = Coordinator.clampedOffset(
+                    target: state.contentOffset, scrollView: scrollView)
+            } else if let fraction = initialCenterFraction {
+                // Первый показ: центрируем на главном здании.
+                scrollView.contentOffset = Coordinator.clampedOffset(
+                    target: CGPoint(x: fraction.x * scrollView.contentSize.width - scrollView.bounds.width / 2,
+                                    y: fraction.y * scrollView.contentSize.height - scrollView.bounds.height / 2),
+                    scrollView: scrollView)
+                state.hasBeenInitialized = true
+            } else {
+                state.hasBeenInitialized = true
+            }
+
+            // Фиксируем применённые значения — они же станут стартовыми
+            // при следующем показе.
+            state.zoomScale = scrollView.zoomScale
+            state.contentOffset = scrollView.contentOffset
         }
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         let hostingController: UIHostingController<Content>
+        let state: VillageMapViewState
         var widthConstraint: NSLayoutConstraint?
         var heightConstraint: NSLayoutConstraint?
         var lastContentSize: CGSize = .zero
-        var didSetInitialOffset = false
+        var didApplyInitialState = false
 
-        init(rootView: Content) {
-            hostingController = UIHostingController(rootView: rootView)
-            hostingController.view.backgroundColor = .clear
+        init(rootView: Content, state: VillageMapViewState) {
+            self.hostingController = UIHostingController(rootView: rootView)
+            self.state = state
+            self.hostingController.view.backgroundColor = .clear
             super.init()
         }
 
@@ -161,9 +191,19 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
 
             if scrollView.zoomScale <= scrollView.minimumZoomScale, horizontalInset == 0, verticalInset == 0 {
                 scrollView.contentOffset = .zero
-                return
+            } else {
+                scrollView.contentOffset = Coordinator.clampedOffset(target: scrollView.contentOffset, scrollView: scrollView)
             }
-            scrollView.contentOffset = Coordinator.clampedOffset(target: scrollView.contentOffset, scrollView: scrollView)
+
+            state.zoomScale = scrollView.zoomScale
+            state.contentOffset = scrollView.contentOffset
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            // Первый показ сам выставляет contentOffset — не пишем в state,
+            // пока инициализация не завершена.
+            guard didApplyInitialState else { return }
+            state.contentOffset = scrollView.contentOffset
         }
 
         static func clampedOffset(target: CGPoint, scrollView: UIScrollView) -> CGPoint {
