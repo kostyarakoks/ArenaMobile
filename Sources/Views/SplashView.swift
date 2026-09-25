@@ -20,6 +20,8 @@ struct SplashView: View {
             // 2. Персонаж (гном) в левом нижнем углу
             Image("DwarfCharacter")
                 .resizable()
+                .frame(maxWidth: 150)
+                .offset(y: -75)
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .ignoresSafeArea(edges: .bottom) // Прижимаем к самому низу экрана
