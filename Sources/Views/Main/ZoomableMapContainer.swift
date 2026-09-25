@@ -1,28 +1,28 @@
 import SwiftUI
 import UIKit
 
-/// Pinch-to-zoom + pan container — native equivalent of Components/ZoomableMap.vue.
+/// Pinch-to-zoom + pan container.
 ///
-/// ИЗМЕНЕНО: убрано вычитание safeAreaInsets из outer.size. Раньше здесь
-/// считался `safeSize = outer.size - safeAreaInsets`, из-за чего карта
-/// зажималась в маленький прямоугольник между глобальным хедером и нижним
-/// доком MainTabView (safeAreaInset'ы), а потом ещё и вписывалась по высоте —
-/// получались чёрные полосы сверху/снизу. Теперь используем outer.size как
-/// есть: вызывающая сторона (VillageMapView) сама решает, игнорировать ли
-/// safe area через `.ignoresSafeArea()` на карте — и карта заполняет всё.
+/// ИЗМЕНЕНО: baseSize теперь делает aspect FILL (карта покрывает viewport
+/// по обеим осям на минимальном зуме), а не aspect FIT по одной оси. Из-за
+/// прежнего поведения на iPhone карта получалась уже экрана — справа зияла
+/// чёрная полоса. Aspect fill всегда даёт контент >= viewport по обеим осям,
+/// поэтому при minZoom = 1.0 карта занимает весь экран без пустых зон.
+///
+/// Если соотношение карты совпадает с экраном — aspect fill даёт ровно
+/// размер экрана. Если карта уже экрана (портретная, как 940:1672) —
+/// aspect fill вписывает по высоте и делает ширину шире экрана (панорама
+/// влево-вправо). Если карта шире экрана — наоборот, вписывает по ширине и
+/// даёт панораму вверх-вниз. В любом случае — без чёрных полос.
 struct ZoomableMapContainer<Content: View>: View {
     let content: () -> Content
     let minZoom: CGFloat
     let maxZoom: CGFloat
-    // Content's own natural width/height ratio. nil = растянуть на оба измерения.
-    // Для деревни передаём 940/1672 → карта вписывается по ВЫСОТЕ, а ширина
-    // получается шире экрана (можно панорамировать влево/вправо).
     var contentAspect: CGFloat?
-    // Доля (0...1, 0...1) контента, которую надо центрировать во viewport
-    // при первом показе. nil = верхний-левый угол по умолчанию.
     var initialCenterFraction: CGPoint?
 
-    // minZoom = 1.0 — запрет уменьшения меньше базового размера.
+    // minZoom = 1.0 — запрет на уменьшение меньше базового размера
+    // (который уже покрывает весь экран).
     // maxZoom = 2.0 — максимальное увеличение ×2.
     init(
         minZoom: CGFloat = 1.0,
@@ -38,23 +38,30 @@ struct ZoomableMapContainer<Content: View>: View {
         self.content = content
     }
 
+    /// Aspect FILL: возвращает размер, который покрывает outerSize по обеим
+    /// осям, сохраняя пропорции contentAspect. Никогда не даёт размер меньше
+    /// outerSize ни по одной оси.
     private func baseSize(for outerSize: CGSize) -> (width: CGFloat, height: CGFloat) {
-        if let contentAspect, contentAspect > 0 {
-            // Вписываем по высоте: height = full height, width = height * aspect.
-            // Для карты 940×1672 (aspect = 0.562) и iPhone'а (393×852) ширина
-            // получается 852 * 0.562 ≈ 479 — шире экрана, панорамируется.
-            let height = outerSize.height
-            return (height * contentAspect, height)
+        guard let aspect = contentAspect, aspect > 0, outerSize.width > 0, outerSize.height > 0 else {
+            return (outerSize.width, outerSize.height)
         }
-        return (outerSize.width, outerSize.height)
+
+        // Попытка №1: вписать по ширине. height = width / aspect.
+        // Если полученная высота >= высоты экрана — этого достаточно.
+        let fitByWidthHeight = outerSize.width / aspect
+        if fitByWidthHeight >= outerSize.height {
+            return (outerSize.width, fitByWidthHeight)
+        }
+
+        // Попытка №2: вписать по высоте. width = height * aspect.
+        // Сюда попадаем, когда карта уже экрана (портретная), и надо
+        // растянуть её по высоте, получив ширину больше экрана.
+        let fitByHeightWidth = outerSize.height * aspect
+        return (fitByHeightWidth, outerSize.height)
     }
 
     var body: some View {
         GeometryReader { outer in
-            // ВАЖНО: не вычитаем safeAreaInsets. outer.size здесь — это то,
-            // что предложил родитель (VillageMapView); после .ignoresSafeArea()
-            // на карте это будет полный размер экрана, включая области под
-            // глобальным хедером и нижним доком.
             let base = baseSize(for: outer.size)
             PinchZoomScrollView(
                 minZoom: minZoom,
@@ -86,8 +93,6 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
-        // Начальный зум всегда 1.0 — даже если minZoom ниже (например, 0.5).
-        // Сейчас minZoom = 1.0, так что строка просто подтверждает поведение.
         scrollView.zoomScale = min(max(1, minZoom), maxZoom)
         scrollView.bouncesZoom = true
         scrollView.showsHorizontalScrollIndicator = false
@@ -129,10 +134,6 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             context.coordinator.heightConstraint?.constant = contentSize.height
         }
 
-        // Однократное центрирование на initialCenterFraction — до первого
-        // layout pass'а scrollView.bounds/contentSize = .zero, поэтому флаг
-        // didSetInitialOffset срабатывает только на первом проходе, где обе
-        // величины уже положительные. Дальше не трогаем панораму/зум игрока.
         if !context.coordinator.didSetInitialOffset,
            let fraction = initialCenterFraction,
            scrollView.bounds.width > 0, scrollView.bounds.height > 0,
@@ -163,10 +164,6 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             hostingController.view
         }
 
-        // Клампим contentOffset после пинч-аут (bouncesZoom может оставить
-        // смещение вне допустимого прямоугольника) и центрируем контент,
-        // когда он меньше bounds (обычно при minZoom < 1 — сейчас не наш
-        // случай, но оставляем на будущее).
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
             let bounds = scrollView.bounds.size
             let content = scrollView.contentSize

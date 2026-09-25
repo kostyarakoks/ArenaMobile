@@ -1,15 +1,17 @@
 import SwiftUI
 
-/// The "Город" tab's real content — the native counterpart of Village/Buildings.vue.
+/// The "Город" tab's real content.
 ///
 /// Layout:
-///   • Корневой ZStack игнорирует safe area — карта уходит под глобальный
-///     хедер и под нижний док MainTabView, чтобы заполнить ВЕСЬ экран.
-///   • .safeAreaInset(edge: .top) — полоса "📍 {имя деревни}" с градиентом
-///     50% → 0%, ПОВЕРХ карты, сразу под глобальным хедером.
+///   • Карта растянута на ВЕСЬ экран и заходит ПОД глобальный хедер (с ресурсами),
+///     под нижний док MainTabView и под полосу с именем деревни. Всё это — оверлеи
+///     поверх карты, а не отдельные полосы, отнимающие у неё место.
+///   • .safeAreaInset(edge: .top) { villageNameBar } — полоса "📍 {имя}"
+///     встаёт на верхнюю кромку контентной зоны (сразу под глобальным хедером).
 ///   • .overlay(alignment: .topTrailing) — столбец круглых кнопок справа.
 ///
-/// Зум: minZoom = 1.0 (запрет уменьшения), maxZoom = 2.0 (максимум ×2).
+/// Зум: minZoom = 1.0 (aspect fill — карта ровно покрывает экран),
+/// maxZoom = 2.0 (максимум ×2).
 struct VillageMapView: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -24,8 +26,9 @@ struct VillageMapView: View {
     @State private var renameError: String?
     @State private var isRenameSaving = false
 
-    // Дефолтные размеры карты деревни (viewbox). Если сервер не пришлёт свои —
-    // используем эти. Пропорции 940 : 1672 ≈ 0.562.
+    // Дефолтные размеры viewbox. Соотношение 940:1672 ≈ 0.562 — портретная
+    // карта, шире соотношение экрана. Aspect fill в ZoomableMapContainer
+    // растянет её на весь экран без чёрных полос.
     private static let defaultMapWidth: Int = 940
     private static let defaultMapHeight: Int = 1672
 
@@ -36,24 +39,27 @@ struct VillageMapView: View {
 
     var body: some View {
         ZStack {
+            // Карта — растянута на весь экран и ЗАХОДИТ под глобальный хедер
+            // и под нижний док. .ignoresSafeArea() здесь, внутри ZStack, а не
+            // на самом ZStack: так mapCanvas гарантированно занимает полный
+            // экран, включая области под safeAreaInset'ами родителя.
             if let detail {
                 mapCanvas(detail)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
             } else {
                 Color.black
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
             }
 
             if let errorMessage, detail == nil, !isLoading {
                 errorStateView(errorMessage)
             }
         }
-        // Карта должна заходить под глобальный хедер и нижний док — оба
-        // добавлены MainTabView через .safeAreaInset. .ignoresSafeArea() на
-        // корневом ZStack пробрасывает расширение через них, и карта
-        // реально заполняет весь экран, а не уменьшенный прямоугольник.
-        .ignoresSafeArea()
-        // Полоса с именем деревни — safeAreaInset, чтобы она сидела ПОД
-        // глобальным хедером. Градиент 50% → 0% делает её почти прозрачной
-        // снизу, чтобы карта просвечивала.
+        // Полоса с именем деревни — safeAreaInset на ZStack, встаёт поверх карты
+        // сразу под глобальным хедером. Градиент 50% → 0% — карта просвечивает
+        // сквозь нижнюю часть полосы.
         .safeAreaInset(edge: .top, spacing: 0) {
             villageNameBar
         }
@@ -123,7 +129,7 @@ struct VillageMapView: View {
         }
     }
 
-    // MARK: - Верхний бар с градиентом
+    // MARK: - Полоса с именем деревни
 
     @ViewBuilder
     private var villageNameBar: some View {
@@ -238,8 +244,6 @@ struct VillageMapView: View {
     // MARK: - Карта
 
     private func mapCanvas(_ detail: VillageDetail) -> some View {
-        // Дефолты — 940 × 1672 (см. комментарий к defaultMapWidth/Height выше).
-        // Если сервер прислал свои viewboxWidth/Height — уважаем их.
         let width = Double(detail.map.viewboxWidth ?? Self.defaultMapWidth)
         let height = Double(detail.map.viewboxHeight ?? Self.defaultMapHeight)
 
@@ -263,8 +267,6 @@ struct VillageMapView: View {
             CGPoint(x: $0.cx / width, y: $0.cy / height)
         }
 
-        // minZoom 1.0 — карта не уменьшается меньше базового размера.
-        // maxZoom 2.0 — максимум ×2.
         return ZoomableMapContainer(
             minZoom: 1.0,
             maxZoom: 2.0,
@@ -432,7 +434,6 @@ struct VillageMapView: View {
 
 struct IdentifiableSlotID: Identifiable { let id: Int }
 
-/// Live progress bar + countdown for one in-progress build-queue item.
 struct ConstructionBadge: View {
     let entry: VillageDetail.QueueEntry
     var scale: CGFloat = 1
