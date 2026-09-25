@@ -2,36 +2,31 @@ import SwiftUI
 
 /// Native port of resources/js/Components/BottomNav.vue: a custom dock plus a "Ещё" button that
 /// opens a grid sheet with everything else — not a system TabView, on purpose, so the shape
-/// matches the web app exactly instead of iOS's own >5-items-collapse-to-"More" behavior (which
-/// would put different items behind "More" than the web version does).
+/// matches the web app exactly instead of iOS's own >5-items-collapse-to-"More" behavior.
+///
+/// ИЗМЕНЕНО: контент (NavigationStack) растянут на весь экран, а GameHeaderBar и bottomDock
+/// навешены через `.safeAreaInset` — они рисуются ПОВЕРХ контента и одновременно "резервируют"
+/// свою высоту в safe area. Это позволяет экранам типа VillageMapView через
+/// `.ignoresSafeArea()` растянуть карту на ВЕСЬ экран, включая области под хедером и доком
+/// (карта уходит под них), а обычным экранам (Рынок, Герой и т.д.) — автоматически получить
+/// контент внутри безопасной зоны без каких-либо изменений с их стороны.
+///
+/// Раньше здесь стоял VStack из трёх рядов (хедер / NavigationStack / док). Это гарантировало,
+/// что ни один экран не заедет под бары, но делало невозможным "карта заходит под хедер":
+/// NavigationStack был жёстко ограничен сверху и снизу, и никакие `.ignoresSafeArea()` внутри
+/// него не помогали — они игнорируются на границе контейнера, к которому применён
+/// safeAreaInset снаружи.
 struct MainTabView: View {
     @EnvironmentObject private var session: AuthSession
-    // One instance for the whole signed-in session — see VillageSession.swift. Injected below
-    // so GameHeaderBar, VillageMapView, WorldMapView and MapOverlayControls all read/write the
-    // same active-village state instead of each fetching their own copy.
     @StateObject private var villageSession = VillageSession()
 
     @State private var selected: NavItem = .village
     @State private var showMore = false
 
-    // Remembers whichever of village/map was last actually shown, so the toggle slot has
-    // something to return to once you've navigated away to a third screen (profile, quests,
-    // etc.) — see toggleItem below. Starts at .village since that's `selected`'s own initial
-    // value.
     @State private var lastMapOrVillage: NavItem = .village
 
-    // Same collapse BottomNav.vue's `villageMapItem` computed does: village/map share ONE dock
-    // slot, showing whichever one you're NOT currently on (tapping it switches to it) — so the
-    // dock is 5 items + "Ещё" (6 buttons total), matching the web version's count, instead of
-    // listing village and map as two separate always-visible slots.
     private var isOnMap: Bool { selected.id == "map" }
     private var isOnMapOrVillage: Bool { selected.id == "village" || selected.id == "map" }
-    // While on village or map, the toggle offers the OTHER one of the pair (unchanged
-    // behavior). From any other screen (profile, quests, ...) it used to always fall back to
-    // .map regardless of what you'd been looking at — reported as: "кнопка «город» и «карта»
-    // меняються только если включен город или карта, в остальных случаях... если ушел с карты,
-    // то при нажатие на кнопку я должен вернуться на карту, так же и с городом". Fixed by
-    // falling back to whichever of the two was last actually active instead of hardcoding .map.
     private var toggleItem: NavItem {
         isOnMapOrVillage ? (isOnMap ? .village : .map) : lastMapOrVillage
     }
@@ -43,36 +38,22 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // Верхний и нижний бар снова имеют "естественный" размер (по своему содержимому —
-        // dockHeight/crestOverlap для дока, padding+контент для GameHeaderBar), как было до
-        // попытки жёстко зафиксировать их в 1/7 высоты экрана — тот вариант делал бары заметно
-        // крупнее, чем нужно, на большинстве экранов.
-        //
-        // Требование "область экрана должна быть разделена на три части, всё содержимое строго
-        // между верхним и нижним баром" при этом остаётся, просто выполняется по-другому: раньше
-        // бары навешивались через `.safeAreaInset`, что технически резервирует под них место, но
-        // оставляет их "плавающими" поверх контента — ScrollView/List внутри среднего экрана
-        // мог(ла) на инерции проскроллить свои строки ПОД бар (типичное поведение полупрозрачных
-        // системных баров). Здесь вместо этого простой VStack из трёх РЯДОМ стоящих (не
-        // перекрывающихся) элементов: бары занимают ровно свою естественную высоту, а
-        // NavigationStack посередине — ровно то, что осталось (`maxHeight: .infinity`), так что
-        // ничему физически некуда "заехать" под бар.
-        VStack(spacing: 0) {
+        NavigationStack {
+            NavDestinationView(item: selected, selectItem: { selected = $0 })
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Хедер с ресурсами — safeAreaInset сверху. Рисуется поверх контента,
+        // но резервирует свою высоту в safe area, так что обычные экраны
+        // (List, ScrollView) получают контент ПОД ним, а не под ним в смысле
+        // "перекрыт". VillageMapView же явно игнорирует эту safe area для
+        // карты — поэтому карта уходит под хедер.
+        .safeAreaInset(edge: .top, spacing: 0) {
             GameHeaderBar(selectItem: { selected = $0 })
-
-            NavigationStack {
-                // `selectItem` lets a screen further down (currently WorldMapView, tapping your
-                // own village) switch the active tab itself — the native equivalent of the web
-                // app's router.visit(route('village.buildings', ...)) jump, since there's no
-                // URL/route to navigate to here, just this same @State this view already owns.
-                NavDestinationView(item: selected, selectItem: { selected = $0 })
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Подстраховка: если какой-то дочерний экран попробует вылезти за свои границы
-            // (offset, transition, отрицательный padding), это обрежется здесь, а не наедет на
-            // бары сверху/снизу.
-            .clipped()
-
+        }
+        // Нижний док — safeAreaInset снизу. Аналогично: резервирует высоту
+        // в safe area (обычные экраны не заезжают под док), но карта в
+        // VillageMapView растягивается под него через .ignoresSafeArea().
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomDock()
         }
         .environmentObject(villageSession)
@@ -88,24 +69,12 @@ struct MainTabView: View {
                 lastMapOrVillage = newValue
             }
         }
-        // Клавиатура не должна сжимать/сдвигать нижний док, когда фокус на текстовом поле.
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
-    // Fixed row height, taller than the plain content needs — the icon row centers inside it
-    // (see dockButton's own maxHeight: .infinity) while the bar texture behind it bleeds on
-    // down through the home-indicator safe area (.ignoresSafeArea below), so the icons land in
-    // the visual middle of the whole painted bar instead of hugging its top edge.
     private let dockHeight: CGFloat = 74
-    // The nav_crest emblem pokes 11pt ABOVE the dock's own row via a decorative overlay (a
-    // common bottom-bar flourish — see below), which doesn't count toward the icon row's own
-    // `dockHeight`. Reserved via `.padding(.top, crestOverlap)` so it renders inside the bar's
-    // own layout instead of poking out past whatever total height this bar is given.
     private let crestOverlap: CGFloat = 11
 
-    // Естественная высота дока — снова dockHeight + crestOverlap, как было до попытки
-    // растягивать бар на ровно 1/7 экрана. Больше не принимает height: содержимое (иконки) и
-    // фон (bg_res/nav_bar_bg) теперь всегда одного и того же, естественного размера.
     private func bottomDock() -> some View {
         HStack(spacing: 0) {
             ForEach(dockItems) { item in
@@ -113,29 +82,18 @@ struct MainTabView: View {
                     selected = item
                 }
             }
-            // nav_more.imageset was already bundled (build_ios_assets.py) but never wired up —
-            // "Ещё" was still falling back to the "⋯" emoji.
             dockButton(label: "Ещё", icon: "⋯", img: "nav_more", isActive: showMore) {
                 showMore = true
             }
         }
         .frame(height: dockHeight)
         .padding(.top, crestOverlap)
-        // The bar texture + crest the user supplied (see BottomNav.vue's NAV_BAR_BG/NAV_CREST,
-        // sliced by build_ios_assets.py into Assets.xcassets/Nav) — replaces the old plain
-        // gradient background so the native dock matches the web app's finished look exactly,
-        // not just an approximation of it.
         .background(
             Image("nav_bar_bg")
                 .resizable(resizingMode: .stretch)
                 .ignoresSafeArea(edges: .bottom)
         )
         .overlay(alignment: .top) {
-            // No `.offset` needed any more — the `.padding(.top, crestOverlap)` above already
-            // shifted this view's own top edge up by exactly the 11pt the crest used to be
-            // offset by, so aligning it flush to THIS (now taller) view's top edge lands it in
-            // the identical visual spot as before, just within the reserved safe area now
-            // instead of poking out past it.
             Image("nav_crest")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -151,9 +109,6 @@ struct MainTabView: View {
     private func dockButton(label: String, icon: String, img: String?, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                // Local asset art (bundled in the app — see build_ios_assets.py) when available,
-                // falling back to the emoji otherwise (same fallback BottomNav.vue uses for the
-                // "Деревня" toggle state).
                 if let img {
                     Image(img)
                         .resizable()
@@ -209,9 +164,6 @@ struct MainTabView: View {
                     Button("Закрыть") { showMore = false }
                 }
             }
-            // See AppVersion.swift's own doc comment for why this shows here and on the splash
-            // screen — "добавить в приложение номер версии сборки при загрузки и при открытие
-            // «еще»".
             .safeAreaInset(edge: .bottom) {
                 Text(AppVersion.displayString)
                     .font(.caption2)
