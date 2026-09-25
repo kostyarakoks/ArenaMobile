@@ -111,6 +111,63 @@ final class APIClient {
         _ = try? await perform(request)
     }
 
+    // MARK: - Avatar
+
+    private struct AvatarPresetRaw: Codable { let emoji: String; let color: String }
+    private struct AvatarPresetsResponse: Codable { let presets: [String: AvatarPresetRaw] }
+    private struct UpdateAvatarResponse: Codable { let user: GameUser }
+
+    /// GET /api/avatar-presets — та же галерея, что PlayerAvatar.vue/UpdateAvatarForm.vue читают
+    /// из config('avatars.presets') на вебе; отсортирована по ключу для стабильного порядка сетки.
+    func fetchAvatarPresets(token: String) async throws -> [AvatarPreset] {
+        var request = try makeRequest(path: "/api/avatar-presets", method: "GET")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+        guard let decoded = try? decoder.decode(AvatarPresetsResponse.self, from: data) else { throw APIError.decoding }
+        return decoded.presets
+            .map { AvatarPreset(key: $0.key, emoji: $0.value.emoji, color: $0.value.color) }
+            .sorted { $0.key < $1.key }
+    }
+
+    /// Выбор готового бейджа из галереи — Api\AuthController::updateAvatar() с полем `preset`.
+    func setAvatarPreset(_ key: String, token: String) async throws -> GameUser {
+        var request = try makeRequest(path: "/api/profile/avatar", method: "POST")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(["preset": key])
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+        guard let decoded = try? decoder.decode(UpdateAvatarResponse.self, from: data) else { throw APIError.decoding }
+        return decoded.user
+    }
+
+    /// Загрузка своей картинки — тот же POST /api/profile/avatar, но как multipart/form-data
+    /// (единственное место в клиенте, которому нужен файл, а не JSON, поэтому запрос собирается
+    /// вручную, в обход makeRequest()'а с его фиксированным "Content-Type: application/json").
+    func uploadAvatar(imageData: Data, filename: String, mimeType: String, token: String) async throws -> GameUser {
+        guard let base = baseURL else { throw APIError.invalidServerURL }
+        var request = URLRequest(url: base.appendingPathComponent("/api/profile/avatar"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"avatar\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (data, response) = try await perform(request)
+        try Self.checkStatus(response, data: data, decoder: decoder)
+        guard let decoded = try? decoder.decode(UpdateAvatarResponse.self, from: data) else { throw APIError.decoding }
+        return decoded.user
+    }
+
     // MARK: - Villages
 
     private struct VillagesResponse: Codable { let villages: [VillageSummary] }

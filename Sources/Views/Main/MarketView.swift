@@ -80,58 +80,89 @@ struct MarketView: View {
                 }
             }
             .disabled(isBusy)
+            .gameScreenBackground()
         } else {
             Color.clear
         }
     }
 
+    // Широкая иллюстрация рынка прямо под вкладками — тот же приём, что и у героя
+    // (см. HeroView.heroBanner), только тут картинка уже есть (прислана как готовый
+    // ассет), а не заглушка.
+    private var marketBanner: some View {
+        Image("MarketBanner")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(height: 150)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(GameTheme.panelBorder, lineWidth: 1))
+    }
+
     private func resourceTab(_ detail: MarketDetail) -> some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                marketBanner
+
                 Button {
                     showCreateOffer = true
                 } label: {
                     Label("Создать предложение", systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.gamePrimary)
-            }
-            if !detail.mine.isEmpty {
-                Section("Мои предложения") {
-                    ForEach(detail.mine) { offer in
-                        HStack {
-                            offerLabel(give: offer.offerResource, giveAmount: offer.offerAmount, want: offer.requestResource, wantAmount: offer.requestAmount)
-                            Spacer()
-                            Button("Отменить") { Task { await cancelResourceOffer(id: offer.id) } }
-                                .font(.caption)
+
+                if !detail.mine.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Мои предложения").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                        ForEach(detail.mine) { offer in
+                            VStack(alignment: .leading, spacing: 8) {
+                                offerLabel(give: offer.offerResource, giveAmount: offer.offerAmount, want: offer.requestResource, wantAmount: offer.requestAmount)
+                                Button("Отменить") { Task { await cancelResourceOffer(id: offer.id) } }
+                                    .buttonStyle(.gameSecondary)
+                            }
+                            .gamePanel(padding: 14)
                         }
                     }
                 }
-            }
-            Section("Предложения игроков") {
-                if detail.offers.isEmpty {
-                    Text("Пока нет предложений.").foregroundStyle(GameTheme.textMuted)
-                }
-                ForEach(detail.offers) { offer in
-                    VStack(alignment: .leading, spacing: 4) {
-                        offerLabel(give: offer.offerResource, giveAmount: offer.offerAmount, want: offer.requestResource, wantAmount: offer.requestAmount)
-                        Text("\(offer.seller) · \(offer.village)").font(.caption2).foregroundStyle(GameTheme.textSecondary)
-                        Button("Обменять") { Task { await acceptResourceOffer(id: offer.id) } }
-                            .buttonStyle(.gamePrimary)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Предложения игроков").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                    if detail.offers.isEmpty {
+                        Text("Пока нет предложений.")
+                            .foregroundStyle(GameTheme.textMuted)
+                            .gamePanel(padding: 14)
+                    }
+                    ForEach(detail.offers) { offer in
+                        VStack(alignment: .leading, spacing: 6) {
+                            offerLabel(give: offer.offerResource, giveAmount: offer.offerAmount, want: offer.requestResource, wantAmount: offer.requestAmount)
+                            Text("\(offer.seller) · \(offer.village)").font(.caption2).foregroundStyle(GameTheme.textSecondary)
+                            Button("Обменять") { Task { await acceptResourceOffer(id: offer.id) } }
+                                .buttonStyle(.gamePrimary)
+                        }
+                        .gamePanel(padding: 14)
                     }
                 }
             }
+            .padding(16)
         }
-        .listStyle(.insetGrouped)
     }
 
+    // Строка обмена в стиле референса: "Дерево 100 → 100 Камень" с иконками ресурсов
+    // вместо эмодзи-заглушек по бокам стрелки.
     private func offerLabel(give: String, giveAmount: Int, want: String, wantAmount: Int) -> some View {
-        HStack(spacing: 4) {
-            Text("\(icon(for: give)) \(giveAmount)")
-            Image(systemName: "arrow.right").font(.caption2)
-            Text("\(icon(for: want)) \(wantAmount)")
+        HStack(spacing: 8) {
+            resourcePill(give, giveAmount)
+            Image(systemName: "arrow.right").font(.footnote.bold()).foregroundStyle(GameTheme.amberLight)
+            resourcePill(want, wantAmount)
         }
-        .font(.footnote)
-        .foregroundStyle(GameTheme.textPrimary)
+    }
+
+    private func resourcePill(_ resource: String, _ amount: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(icon(for: resource)).font(.footnote)
+            Text("\(amount)").font(.footnote.bold()).foregroundStyle(GameTheme.textPrimary)
+        }
     }
 
     private func icon(for resource: String) -> String {
@@ -139,46 +170,56 @@ struct MarketView: View {
     }
 
     private func itemTab(_ detail: MarketDetail) -> some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                marketBanner
+
                 Button {
                     showSellItem = true
                 } label: {
                     Label("Выставить предмет", systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.gamePrimary)
-            }
-            if !detail.myItemOffers.isEmpty {
-                Section("Мои предметы") {
-                    ForEach(detail.myItemOffers) { offer in
-                        HStack {
-                            Text("\(offer.label) — \(icon(for: offer.priceResource)) \(offer.priceAmount)")
-                                .font(.footnote)
-                                .foregroundStyle(GameTheme.textPrimary)
-                            Spacer()
-                            Button("Отменить") { Task { await cancelItemOffer(id: offer.id) } }
-                                .font(.caption)
+
+                if !detail.myItemOffers.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Мои предметы").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                        ForEach(detail.myItemOffers) { offer in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(offer.label) — \(icon(for: offer.priceResource)) \(offer.priceAmount)")
+                                    .font(.footnote)
+                                    .foregroundStyle(GameTheme.textPrimary)
+                                Button("Отменить") { Task { await cancelItemOffer(id: offer.id) } }
+                                    .buttonStyle(.gameSecondary)
+                            }
+                            .gamePanel(padding: 14)
                         }
                     }
                 }
-            }
-            Section("Предметы игроков") {
-                if detail.itemOffers.isEmpty {
-                    Text("Пока нет предложений.").foregroundStyle(GameTheme.textMuted)
-                }
-                ForEach(detail.itemOffers) { offer in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(offer.icon) \(offer.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
-                        Text("\(offer.seller) · \(offer.village) · \(icon(for: offer.priceResource)) \(offer.priceAmount)")
-                            .font(.caption2)
-                            .foregroundStyle(GameTheme.textSecondary)
-                        Button("Купить") { Task { await acceptItemOffer(id: offer.id) } }
-                            .buttonStyle(.gamePrimary)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Предметы игроков").font(.subheadline.bold()).foregroundStyle(GameTheme.amber)
+                    if detail.itemOffers.isEmpty {
+                        Text("Пока нет предложений.")
+                            .foregroundStyle(GameTheme.textMuted)
+                            .gamePanel(padding: 14)
+                    }
+                    ForEach(detail.itemOffers) { offer in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(offer.icon) \(offer.label)").font(.footnote).foregroundStyle(GameTheme.textPrimary)
+                            Text("\(offer.seller) · \(offer.village) · \(icon(for: offer.priceResource)) \(offer.priceAmount)")
+                                .font(.caption2)
+                                .foregroundStyle(GameTheme.textSecondary)
+                            Button("Купить") { Task { await acceptItemOffer(id: offer.id) } }
+                                .buttonStyle(.gamePrimary)
+                        }
+                        .gamePanel(padding: 14)
                     }
                 }
             }
+            .padding(16)
         }
-        .listStyle(.insetGrouped)
     }
 
     private func loadVillages() async {

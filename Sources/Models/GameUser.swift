@@ -38,3 +38,12 @@ struct GameUser: Codable, Equatable {
         case avatarInitial = "avatar_initial"
     }
 }
+
+/// One entry of the preset avatar gallery — mirrors config('avatars.presets') on the Laravel
+/// side (key → emoji + background colour), served to the app via GET /api/avatar-presets.
+struct AvatarPreset: Codable, Identifiable, Equatable {
+    let key: String
+    let emoji: String
+    let color: String
+    var id: String { key }
+}

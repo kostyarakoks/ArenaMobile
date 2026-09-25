@@ -96,6 +96,14 @@ final class AuthSession: ObservableObject {
         }
     }
 
+    /// Применить уже полученного с сервера пользователя (например, после смены аватара —
+    /// APIClient.setAvatarPreset/uploadAvatar уже вернули свежий GameUser в ответе, так что
+    /// отдельный GET /api/me не нужен). `currentUser` — private(set), поэтому экранам вроде
+    /// ProfileScreen нужен этот сеттер, а не прямое присваивание.
+    func applyUpdatedUser(_ user: GameUser) {
+        currentUser = user
+    }
+
     func refreshCurrentUser() async {
         guard let token = bearerToken else { return }
         do {
