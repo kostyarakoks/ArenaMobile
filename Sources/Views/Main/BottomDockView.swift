@@ -8,7 +8,7 @@ struct BottomDockView: View {
     @EnvironmentObject private var navState: NavigationState
 
     private let dockHeight: CGFloat = 74
-    private let crestOverlap: CGFloat = 11
+    private let crestOverlap: CGFloat = 21
 
     private var isOnMap: Bool { navState.selected.id == "map" }
     private var isOnMapOrVillage: Bool {
@@ -49,6 +49,7 @@ struct BottomDockView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(height: 22)
+                     .offset(y: -10)
                 .allowsHitTesting(false)
         }
     }
