@@ -15,7 +15,7 @@ import UIKit
 /// dark background everywhere else.
 enum GameTheme {
     // body { background-color: #0a1730; }
-    static let background = Color(red: 0x0a / 255.0, green: 0x17 / 255.0, blue: 0x30 / 255.0)
+    static let background = Color(red: 1 / 255, green: 14 / 255, blue: 24 / 255)
 
     // .tv-panel: bg-gradient-to-b from-[#152f57] to-[#0e2140], border-blue-900/50
     static let panelTop = Color(red: 0x15 / 255.0, green: 0x2f / 255.0, blue: 0x57 / 255.0)

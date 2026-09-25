@@ -27,7 +27,7 @@ struct SplashView: View {
             Image("Background23")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 340, height: 220, alignment: .bottomLeading)
+                .frame(width: 400, height: 259, alignment: .bottomLeading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .offset(x: -30) // чуть вывести за левый край — как на референсе
                 .ignoresSafeArea(edges: .bottom)
