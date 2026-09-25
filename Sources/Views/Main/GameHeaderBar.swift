@@ -5,12 +5,10 @@ import SwiftUI
 /// GameLayout.vue's own always-present header on the web app (resources/js/Layouts/
 /// GameLayout.vue) rather than only showing on the village map like this used to.
 ///
-/// Pared down to exactly two things per an explicit request: the player's own avatar, and the
-/// four base resources. Everything else that used to live here — silver/gold currency, the
-/// manual refresh button, and (from an earlier round) the village nameplate/switcher and
-/// profile/messages/quests action icons — now lives elsewhere (MapOverlayControls for the
-/// latter) or nowhere on this screen at all, on purpose: this header's only job now is "who am I
-/// and what do I have", the same minimal always-visible strip the reference art shows.
+/// Прозрачный градиентный фон: сверху 50% чёрного → снизу 0% (прозрачный). Карта/фон
+/// под хедером видны сквозь нижнюю часть — так же, как у полосы с названием деревни в
+/// VillageMapView. Раньше был плотный непрозрачный градиент + золотая линия снизу —
+/// это читалось как отдельная «шапка», а не как часть общего экрана.
 struct GameHeaderBar: View {
     @EnvironmentObject private var session: AuthSession
     @EnvironmentObject private var villageSession: VillageSession
@@ -24,21 +22,15 @@ struct GameHeaderBar: View {
         VStack(spacing: 4) {
             // No longer a horizontal ScrollView: avatar + 4 resource badges are laid out with
             // `.frame(maxWidth: .infinity)` per badge so the row always fills exactly the screen
-            // width instead of overflowing and needing a scroll to see the last resource
-            // (reported: "надо коректировать размер шрифта, что бы все ресурсы влазили без
-            // прокрутки"). Compact K/M numbers (fmtCompact) plus smaller icon/font sizes and a
-            // `.minimumScaleFactor` safety margin are what actually make that fit on narrow phones.
+            // width instead of overflowing and needing a scroll to see the last resource.
             HStack(spacing: 6) {
                 AvatarBadge(user: session.currentUser, size: 38)
 
                 // Always laid out, even before villageSession.detail has loaded — used to be gated
                 // behind `if let info = villageSession.detail?.village`, which meant the header was
-                // JUST the avatar (one 38pt circle, hugging the left edge) until the first village
-                // fetch completed, then suddenly widened to avatar+4 badges filling the row. That's
-                // the reported "место под ресурсы при загрузки должно быть выстовлено сразу" — the
-                // fix is to reserve the same 4-badge layout from the very first frame (including
-                // during SplashView's loading state) and just show 0 in each until real data
-                // arrives, instead of the row's own shape changing out from under the player.
+                // JUST the avatar until the first village fetch completed, then suddenly widened to
+                // avatar+4 badges filling the row. Now the same 4-badge layout is reserved from the
+                // first frame, showing 0 in each until real data arrives.
                 let info = villageSession.detail?.village
                 resourceBadge(image: "icon_wood", info?.wood ?? 0)
                 resourceBadge(image: "icon_clay", info?.clay ?? 0)
@@ -46,13 +38,7 @@ struct GameHeaderBar: View {
                 resourceBadge(image: "icon_crop", info?.crop ?? 0)
             }
 
-            // "кристаллы разместить под хедером с правой стороны, дальше кол-во населения" —
-            // moved out of MapOverlayControls' floating map-only button stack (which meant
-            // crystals were invisible on every screen except the two maps) into a slim second row
-            // attached right under the resource row, right-aligned, visible everywhere the header
-            // is — same "always visible" treatment the four base resources already get. Population
-            // ("кол-во людей в городе") sits right next to it, both reading straight off
-            // VillageDetail.VillageInfo (see VillageModels.swift) with no new network call needed.
+            // Crystals + population — slim second row, right-aligned, always visible.
             HStack(spacing: 8) {
                 Spacer()
                 crystalPill
@@ -60,13 +46,24 @@ struct GameHeaderBar: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 14) // запас, чтобы градиент успел «раствориться» до контента
         .background(
-            LinearGradient(colors: [GameTheme.panelTop, GameTheme.background], startPoint: .top, endPoint: .bottom)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(GameTheme.amber.opacity(0.35)).frame(height: 1)
-                }
-                .ignoresSafeArea(edges: .top)
+            // Градиент: сверху 50% чёрного → снизу 0% (прозрачный).
+            // .ignoresSafeArea(edges: .top) продлевает заливку в статус-бар.
+            //
+            // Убрал overlay с золотой линией снизу: раньше он читался как «граница
+            // шапки», теперь же хедер плавно уходит в контент и жёсткая линия ломала
+            // бы этот переход.
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.5),
+                    Color.black.opacity(0.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
         )
     }
 
@@ -92,8 +89,7 @@ struct GameHeaderBar: View {
 
     // "кол-во людей в городе добавить" — Village::population() is already round-tripped end to
     // end (VillageController::show()'s `'population' => $village->population`, decoded into
-    // VillageDetail.VillageInfo.population — see VillageModels.swift), it just wasn't shown
-    // anywhere on the map screens; this is the one always-visible spot for it, next to crystals.
+    // VillageDetail.VillageInfo.population — see VillageModels.swift).
     private var populationPill: some View {
         HStack(spacing: 3) {
             Image(systemName: "person.2.fill")
