@@ -6,6 +6,11 @@ import UIKit
 /// Параметр `state` опционален: если передан — зум/панорама сохраняются
 /// (используется в VillageMapView), если нет — каждый показ начинается
 /// с нуля (используется в FieldsMapView/WorldMapView).
+///
+/// Жёсткий запрет на overscroll: `bounces = false` +
+/// `alwaysBounceHorizontal/Vertical = false`. Карту нельзя протащить
+/// за край — если правый край карты совпал с правым краем экрана,
+/// дальше влево она не сдвинется (и наоборот).
 struct ZoomableMapContainer<Content: View>: View {
     let content: () -> Content
     let minZoom: CGFloat
@@ -76,7 +81,14 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
         scrollView.minimumZoomScale = minZoom
         scrollView.maximumZoomScale = maxZoom
         scrollView.zoomScale = min(max(state?.zoomScale ?? 1.0, minZoom), maxZoom)
+
+        // Обе пружины выключаем: карта не должна «отскакивать» за край
+        // и не должна резиниться при уменьшении ниже minZoom.
         scrollView.bouncesZoom = false
+        scrollView.bounces = false
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.alwaysBounceVertical = false
+
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.backgroundColor = .clear
@@ -121,8 +133,6 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
            scrollView.contentSize.width > 0, scrollView.contentSize.height > 0 {
             context.coordinator.didApplyInitialState = true
 
-            // Если state передан — восстанавливаем сохранённое значение,
-            // иначе стартуем с 1.0.
             let zoom = min(max(state?.zoomScale ?? 1.0, minZoom), maxZoom)
             scrollView.zoomScale = zoom
 
@@ -169,6 +179,20 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             hostingController.view
         }
 
+        /// Жёсткий клампинг на каждый скролл-эвент. Даже если UIScrollView
+        /// (по какой-то причине) попробует выйти за край — вернём мгновенно.
+        /// Это дополняет bounces = false: пользователь физически не сможет
+        /// увидеть пустоту за краем карты.
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard didApplyInitialState else { return }
+
+            let clamped = Coordinator.clampedOffset(target: scrollView.contentOffset, scrollView: scrollView)
+            if clamped != scrollView.contentOffset {
+                scrollView.contentOffset = clamped
+            }
+            state?.contentOffset = clamped
+        }
+
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
             let bounds = scrollView.bounds.size
             let content = scrollView.contentSize
@@ -186,11 +210,9 @@ private struct PinchZoomScrollView<Content: View>: UIViewRepresentable {
             state?.contentOffset = scrollView.contentOffset
         }
 
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard didApplyInitialState else { return }
-            state?.contentOffset = scrollView.contentOffset
-        }
-
+        /// Клампит contentOffset в допустимый диапазон
+        /// [0 ... contentSize - bounds] по обеим осям.
+        /// Гарантирует, что края карты не выйдут за края scrollView.
         static func clampedOffset(target: CGPoint, scrollView: UIScrollView) -> CGPoint {
             let maxX = max(0, scrollView.contentSize.width - scrollView.bounds.width)
             let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
