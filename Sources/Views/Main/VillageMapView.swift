@@ -76,11 +76,16 @@ struct VillageMapView: View {
                 errorStateView(errorMessage)
             }
         }
-        // Кнопки справа — поверх ZStack, ниже хедера и полосы с именем.
-        .overlay(alignment: .topTrailing) {
-            mapActionColumn
-                .padding(.trailing, 10)
-                .padding(.top, 110)
+        // Столбец кнопок справа — тот же переиспользуемый MapOverlayControls, что и на
+        // WorldMapView/FieldsMapView (переключатель деревни, Поля, Профиль, Сообщения,
+        // Задания — реально ведут в свои экраны через selectItem). Раньше здесь стоял
+        // локальный `mapActionColumn` с SF Symbols-иконками без единого обработчика нажатия
+        // (leaf.fill/gearshape.fill/envelope.fill/scroll.fill, все action: {}) — декоративная
+        // заглушка вместо рабочего столбца, который был "как раньше". Убрал заглушку, вернул
+        // настоящий MapOverlayControls.
+        .overlay(alignment: .trailing) {
+            MapOverlayControls(selectItem: { navState.selected = $0 })
+                .padding(.trailing, 12)
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
@@ -181,62 +186,6 @@ struct VillageMapView: View {
             // БЕЗ фонового градиента — просто текст поверх карты с тенью,
             // чтобы читалось на любом фоне.
         }
-    }
-
-    // MARK: - Столбец кнопок справа
-
-    private var mapActionColumn: some View {
-        VStack(spacing: 10) {
-            mapActionButton(icon: "leaf.fill", badge: nil) {}
-            mapActionButton(icon: "gearshape.fill", badge: nil) {}
-            mapActionButton(icon: "envelope.fill", badge: 1) {}
-            mapActionButton(icon: "scroll.fill", badge: nil) {}
-        }
-    }
-
-    private func mapActionButton(
-        icon: String,
-        badge: Int?,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.13, green: 0.20, blue: 0.36),
-                                Color(red: 0.08, green: 0.13, blue: 0.26),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(GameTheme.amberLight.opacity(0.7), lineWidth: 1.2)
-                    )
-                    .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
-
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(GameTheme.amberLight)
-                    .frame(width: 46, height: 46)
-
-                if let badge, badge > 0 {
-                    Text("\(badge)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.red)
-                        .clipShape(Capsule())
-                        .offset(x: 4, y: -4)
-                }
-            }
-            .frame(width: 46, height: 46)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Карта

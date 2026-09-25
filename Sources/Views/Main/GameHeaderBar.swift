@@ -30,9 +30,9 @@ struct GameHeaderBar: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            // "иконки на карте сделать как было раньше" — назад к компактным круглым
-            // бейджам (иконка-в-кружке + число рядом), как на референс-скрине рынка,
-            // вместо широких прямоугольных плашек bg_res на всю ширину.
+            // No longer a horizontal ScrollView: avatar + 4 resource badges are laid out with
+            // `.frame(maxWidth: .infinity)` per badge so the row always fills exactly the screen
+            // width instead of overflowing and needing a scroll to see the last resource.
             HStack(spacing: 6) {
                 AvatarBadge(user: session.currentUser, size: 38)
 
@@ -43,11 +43,8 @@ struct GameHeaderBar: View {
                 // first frame, showing 0 in each until real data arrives.
                 let info = villageSession.detail?.village
                 resourceBadge(image: "icon_wood", info?.wood ?? 0)
-                Spacer(minLength: 0)
                 resourceBadge(image: "icon_clay", info?.clay ?? 0)
-                Spacer(minLength: 0)
                 resourceBadge(image: "icon_iron", info?.iron ?? 0)
-                Spacer(minLength: 0)
                 resourceBadge(image: "icon_crop", info?.crop ?? 0)
             }
 
@@ -119,29 +116,30 @@ struct GameHeaderBar: View {
         .clipShape(Capsule())
     }
 
-    // "Как было раньше" — компактный круглый бейдж: иконка в кружке с золотой
-    // окантовкой + жирное число рядом, без плашки на всю ширину. Тот самый стиль,
-    // что виден на референс-скрине рынка (круглые G/дерево/камень/пшеница бейджи
-    // в ряд), которым в прошлый раз заменили на широкие прямоугольные bg_res-плашки —
-    // пользователь попросил вернуть как было.
+    // Wide plate — icon left, big bold number right, no name label — mirroring the reference art
+    // the user supplied (and GameLayout.vue's matching redesign on the web this same round).
+    // Real navy `bg_res` art (Assets.xcassets/GameAssets/UI/bg_res.imageset) instead of the
+    // flat-drawn CutCornerShape/GameOctagonBadgeModifier every other badge in this header still
+    // uses: that shape's plain navy fill nearly disappeared into this header's own navy
+    // background, which is why the resource row went bright amber for a round — this bespoke art
+    // has its own baked-in gold border + bevel shading, so navy reads clearly again without the
+    // loud recolor (same fix applied on web — see app.css's `.resource-plate`). White text
+    // instead of the amber-plate ink colour, to match.
+    // `.frame(maxWidth: .infinity)` lets the 4 badges share the row evenly instead of each
+    // sizing to its own content and overflowing.
     private func resourceBadge(image: String, _ value: Int) -> some View {
-        HStack(spacing: 5) {
-            ZStack {
-                Circle().fill(
-                    LinearGradient(colors: [GameTheme.panelTop, GameTheme.panelBottom], startPoint: .top, endPoint: .bottom)
-                )
-                Circle().stroke(GameTheme.amberLight, lineWidth: 1.5)
-                Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 16, height: 16)
-            }
-            .frame(width: 26, height: 26)
-            .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
-
+        HStack(spacing: 4) {
+            Image(image).resizable().aspectRatio(contentMode: .fit).frame(width: 18, height: 18)
             Text(fmtCompact(value))
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 6)
+        .frame(height: 34)
+        .background(Image("bg_res").resizable(resizingMode: .stretch))
     }
 }
 
