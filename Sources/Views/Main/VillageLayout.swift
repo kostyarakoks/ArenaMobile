@@ -7,8 +7,8 @@ import Foundation
 /// static, rarely-changing layout, so duplicating it here (rather than fetching it from the
 /// server) keeps VillageMapView working even the very first time it loads.
 enum VillageLayout {
-    static let viewboxWidth = 430.0
-    static let viewboxHeight = 350.0
+    static let viewboxWidth = 940.0
+    static let viewboxHeight = 1672.0
 
     static let coords: [Int: (cx: Double, cy: Double)] = [
         1: (90.5, 91.2), 2: (173.5, 66.2), 3: (233.5, 56.2),
