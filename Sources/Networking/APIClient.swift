@@ -761,11 +761,24 @@ final class APIClient {
     }
 
     private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        #if DEBUG
+        let started = Date()
+        let logID = await NetworkDebugLogger.shared.begin(request: request)
+        do {
+            let (data, response) = try await session.data(for: request)
+            await NetworkDebugLogger.shared.complete(logID, response: response, data: data, started: started)
+            return (data, response)
+        } catch {
+            await NetworkDebugLogger.shared.fail(logID, error: error, started: started)
+            throw APIError.transport(error)
+        }
+        #else
         do {
             return try await session.data(for: request)
         } catch {
             throw APIError.transport(error)
         }
+        #endif
     }
 
     private static func checkStatus(_ response: URLResponse, data: Data, decoder: JSONDecoder) throws {

@@ -15,6 +15,7 @@ struct ArenaMobileApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(session)
+                .networkDebugOverlay()
                 .task {
                     // Runs once per launch: checks whether a token saved from a previous
                     // session (Keychain, see AuthSession.swift) is still valid before deciding
